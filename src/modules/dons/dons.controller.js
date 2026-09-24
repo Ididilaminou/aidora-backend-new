@@ -9,9 +9,10 @@ const { success } = require("../../utils/response");
  */
 const lister = asyncHandler(async (req, res) => {
   const { statut, type_don, etablissement_id, date_debut, date_fin, page, limite } = req.query;
-  const result = await service.lister({
-    statut, type_don, etablissement_id, date_debut, date_fin, page, limite,
-  });
+  const result = await service.lister(
+    { statut, type_don, etablissement_id, date_debut, date_fin, page, limite },
+    req.user
+  );
   return success(res, result);
 });
 
@@ -21,7 +22,7 @@ const lister = asyncHandler(async (req, res) => {
  * @access  Privé
  */
 const consulter = asyncHandler(async (req, res) => {
-  const result = await service.consulter(req.params.id);
+  const result = await service.consulter(req.params.id, req.user);
   return success(res, result);
 });
 
