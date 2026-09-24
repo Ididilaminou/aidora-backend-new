@@ -1,0 +1,6 @@
+aidora-frontend/
+├── public/
+├── src/
+├── vercel.json   ← 🆕 ici (à côté de package.json)
+├── package.json
+└── ...
