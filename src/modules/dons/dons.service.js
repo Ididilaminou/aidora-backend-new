@@ -36,7 +36,12 @@ async function lister(filtres, utilisateur = null) {
 // CONSULTER
 // ============================================
 
-async function consulter(id) {
+/**
+ * @param {string|number} id
+ * @param {object|null} utilisateur - si fourni, applique le contrôle d'accès
+ * @param {boolean} verifierAcces - défaut true quand utilisateur est fourni
+ */
+async function consulter(id, utilisateur = null, verifierAcces = true) {
   const idNum = Number(id);
   if (!Number.isInteger(idNum) || idNum <= 0) {
     throw new AppError("Identifiant de don invalide", 400, "VALIDATION_ERROR");
@@ -46,6 +51,24 @@ async function consulter(id) {
   if (!don) {
     throw new AppError("Don introuvable", 404, "NOT_FOUND");
   }
+
+  if (verifierAcces && utilisateur) {
+    // Donneur : uniquement ses propres dons
+    if (utilisateur.role === "DONNEUR" && don.donneur_id !== utilisateur.id) {
+      throw new AppError("Accès refusé à ce don", 403, "FORBIDDEN");
+    }
+
+    // Personnel : uniquement les dons de son établissement
+    if (
+      (utilisateur.role === "PERSONNEL_BANQUE" || utilisateur.role === "PERSONNEL_HOPITAL") &&
+      utilisateur.etablissementId &&
+      don.etablissement_id !== utilisateur.etablissementId
+    ) {
+      throw new AppError("Accès refusé à ce don", 403, "FORBIDDEN");
+    }
+    // ADMINISTRATEUR : accès total
+  }
+
   return don;
 }
 
@@ -144,7 +167,8 @@ async function creer(donnees, utilisateur) {
 // ============================================
 
 async function valider(id, utilisateur) {
-  const don = await consulter(id);
+  // Contrôle d'accès établissement pour le personnel
+  const don = await consulter(id, utilisateur);
 
   if (don.statut !== "ENREGISTRE") {
     throw new AppError(
@@ -207,7 +231,7 @@ async function valider(id, utilisateur) {
 // ============================================
 
 async function rejeter(id, { motif }, utilisateur) {
-  const don = await consulter(id);
+  const don = await consulter(id, utilisateur);
 
   if (don.statut !== "ENREGISTRE") {
     throw new AppError(
@@ -246,7 +270,8 @@ async function rejeter(id, { motif }, utilisateur) {
 // ============================================
 
 async function supprimer(id, utilisateur) {
-  const don = await consulter(id);
+  // Admin uniquement (vérifié en route) — pas de filtre établissement
+  const don = await consulter(id, utilisateur, false);
 
   if (don.statut === "VALIDE") {
     throw new AppError(
@@ -277,15 +302,7 @@ async function supprimer(id, utilisateur) {
 // ============================================
 
 async function pochesDuDon(id, utilisateur) {
-  const don = await consulter(id);
-
-  // Contrôle d'accès
-  if (
-    utilisateur.role === "DONNEUR" &&
-    don.donneur_id !== utilisateur.id
-  ) {
-    throw new AppError("Accès refusé", 403, "FORBIDDEN");
-  }
+  const don = await consulter(id, utilisateur);
 
   return repository.findPochesParDon(don.id);
 }
