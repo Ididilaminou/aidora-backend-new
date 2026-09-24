@@ -55,11 +55,12 @@ async function findUtilisateurByTelephone(telephone) {
 }
 
 /**
- * Recherche un utilisateur par ID (sans mot de passe).
+ * Recherche un utilisateur par ID.
+ * Inclut mot_de_passe uniquement pour les opérations internes (changement MDP).
  */
 async function findUtilisateurById(id) {
   const [rows] = await pool.query(
-    `SELECT id, nom, prenom, email, telephone, role, statut_compte,
+    `SELECT id, nom, prenom, email, telephone, mot_de_passe, role, statut_compte,
             doit_changer_mot_de_passe, date_creation, date_modification
      FROM utilisateurs
      WHERE id = ?
@@ -83,10 +84,6 @@ async function findUtilisateurParEmailOuTelephone(email, telephone) {
   );
   return rows[0] || null;
 }
-
-// ============================================
-// EXTRAS (spécifiques au rôle)
-// ============================================
 
 // ============================================
 // EXTRAS (spécifiques au rôle)
@@ -124,7 +121,6 @@ async function getDonneurExtras(id) {
   return rows[0] || null;
 }
 
-// ✅ FONCTION AJOUTÉE
 async function getPersonnelExtras(id) {
   const [rows] = await pool.query(
     `SELECT 
