@@ -49,17 +49,27 @@ const donneurIdRules = [
 
 // ============================================
 // ROUTES
+// ⚠️ Les routes statiques / préfixées DOIVENT être avant /:id
 // ============================================
 
 router.get("/", controller.lister);
+
+// Route préfixée avant /:id
+router.get(
+  "/donneur/:donneurId",
+  donneurIdRules,
+  validate,
+  controller.listerParDonneur
+);
+
 router.get(
   "/:id/poches",
   idRules,
   validate,
   controller.pochesDuDon
 );
+
 router.get("/:id", idRules, validate, controller.consulter);
-router.get("/donneur/:donneurId", donneurIdRules, validate, controller.listerParDonneur);
 
 router.post(
   "/",
