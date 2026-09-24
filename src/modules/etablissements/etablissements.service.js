@@ -227,7 +227,21 @@ async function reactiverEtablissement(id, utilisateurAdmin = null) {
 async function updateInfos(id, data, utilisateur = null) {
   const ancien = await getEtablissement(id);
 
-  await etablissementRepository.updateInfos(id, data);
+  // 🆕 Normalisation des données
+  const dataNormalisee = { ...data };
+
+  // Convertir possede_banque_de_sang en 0/1
+  if (dataNormalisee.possede_banque_de_sang !== undefined) {
+    dataNormalisee.possede_banque_de_sang =
+      dataNormalisee.possede_banque_de_sang ? 1 : 0;
+  }
+
+  // Si le type devient BANQUE_DE_SANG → force possede_banque = 1
+  if (dataNormalisee.type === "BANQUE_DE_SANG") {
+    dataNormalisee.possede_banque_de_sang = 1;
+  }
+
+  await etablissementRepository.updateInfos(id, dataNormalisee);
   const updated = await getEtablissement(id);
 
   await journalAudit.enregistrer({
@@ -235,12 +249,14 @@ async function updateInfos(id, data, utilisateur = null) {
     action: "MODIFIER_ETABLISSEMENT",
     ancienne_valeur: {
       nom: ancien.nom,
-      adresse: ancien.adresse,
+      type: ancien.type,
+      possede_banque_de_sang: ancien.possede_banque_de_sang,
       ville: ancien.ville,
     },
     nouvelle_valeur: {
       nom: updated.nom,
-      adresse: updated.adresse,
+      type: updated.type,
+      possede_banque_de_sang: updated.possede_banque_de_sang,
       ville: updated.ville,
     },
   });

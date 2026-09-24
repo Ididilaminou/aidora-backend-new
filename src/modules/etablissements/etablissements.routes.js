@@ -58,25 +58,51 @@ const creerRules = [
 
 const updateInfosRules = [
   param("id").isInt({ min: 1 }).withMessage("ID établissement invalide"),
+
   body("nom")
     .optional()
-    .isString().trim().isLength({ min: 3, max: 150 }),
+    .isString().trim().isLength({ min: 3, max: 150 })
+    .withMessage("Le nom doit contenir entre 3 et 150 caractères"),
+
+  body("type")
+    .optional()
+    .isIn(["HOPITAL", "BANQUE_DE_SANG"])
+    .withMessage("Le type doit être HOPITAL ou BANQUE_DE_SANG"),
+
+  body("possede_banque_de_sang")
+    .optional({ nullable: true })
+    .isBoolean().withMessage("possede_banque_de_sang doit être un booléen"),
+
   body("adresse")
     .optional({ nullable: true, checkFalsy: true })
     .isString().isLength({ max: 255 }),
+
   body("ville")
     .optional({ nullable: true, checkFalsy: true })
     .isString().isLength({ max: 100 }),
+
   body("region")
     .optional({ nullable: true, checkFalsy: true })
     .isString().isLength({ max: 100 }),
+
   body("telephone")
     .optional({ nullable: true, checkFalsy: true })
     .isString().isLength({ min: 8, max: 20 }),
+
   body("email")
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isEmail().withMessage("Courriel invalide")
     .normalizeEmail(),
+
+  body("latitude")
+    .optional({ nullable: true })
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("Latitude invalide"),
+
+  body("longitude")
+    .optional({ nullable: true })
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("Longitude invalide"),
 ];
 
 const idParamRule = [
