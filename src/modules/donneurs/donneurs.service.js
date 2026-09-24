@@ -63,14 +63,50 @@ async function creerDonneur(data, etablissementId, utilisateurCreateur = null) {
     `Donneur #${resultat.id} créé dans l'établissement #${etablissementId}`
   );
 
-  // TODO: Envoyer le code par SMS/email via emailService/smsService
-  // await emailService.envoyerCodeActivation({...});
+    // ============================================
+  // 📧 ENVOI DU CODE D'ACTIVATION PAR EMAIL
+  // ============================================
+  try {
+    if (data.email) {
+      await emailService.envoyerCodeActivationDonneur({
+        destinataire: data.email,
+        prenom: data.prenom,
+        code: resultat.codeActivation,
+        utilisateurId: resultat.id,
+      });
+      logger.info(`📧 Email d'activation envoyé à ${data.email}`);
+    } else {
+      logger.warn(`⚠️ Pas d'email pour le donneur #${resultat.id}`);
+    }
+  } catch (emailErr) {
+    logger.error(`❌ Erreur envoi email activation : ${emailErr.message}`);
+  }
+
+  // ============================================
+  // 📱 ENVOI DU CODE PAR SMS (si configuré)
+  // ============================================
+  try {
+    const smsService = require("../../services/sms.service");
+    if (smsService?.envoyerCodeActivationDonneur) {
+      await smsService.envoyerCodeActivationDonneur({
+        telephone: data.telephone,
+        prenom: data.prenom,
+        code: resultat.codeActivation,
+        utilisateurId: resultat.id,
+      });
+      logger.info(`📱 SMS d'activation envoyé à ${data.telephone}`);
+    }
+  } catch (smsErr) {
+    logger.debug(`📱 SMS non envoyé : ${smsErr.message}`);
+  }
+
+  // 📝 Log de secours (dev)
   logger.info(
     `[DEV] Code d'activation pour donneur #${resultat.id} : ${resultat.codeActivation}`
   );
 
   return resultat;
-}
+}   
 
 // ============================================
 // UC2 : Activation du compte via le code reçu (valable 24h)
