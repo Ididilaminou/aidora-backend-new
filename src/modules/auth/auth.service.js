@@ -20,8 +20,9 @@ require("dotenv").config();
 
 const IDENTIFIANTS_INCORRECTS = "Identifiant ou mot de passe incorrect";
 
+// Hash bcrypt valide (coût 10) pour comparaison à temps constant si l'utilisateur n'existe pas
 const HASH_FACTICE =
-  "$2a$10$CwTycUXWue0Thq9StjUM0uJ8Y9Z0Y0Y0Y0Y0Y0Y0Y0Y0Y0Y0Y0Y0Y";
+  "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 const BCRYPT_ROUNDS = 12;
 const DUREE_CODE_ACTIVATION_MIN = 15;   // 15 minutes
@@ -255,7 +256,7 @@ async function inscrireDonneur(data, adresseIp = null) {
     codeHash,
   });
 
-  // 📝 Audit
+  // Audit
   await journalAudit.enregistrer({
     utilisateur_id: resultat.utilisateurId,
     action: "INSCRIPTION_DONNEUR",
@@ -270,7 +271,7 @@ async function inscrireDonneur(data, adresseIp = null) {
 
   logger.info(`Inscription donneur #${resultat.utilisateurId} réussie`);
 
-  // 📤 Envoi du code (ne bloque jamais)
+  // Envoi du code (ne bloque jamais)
   try {
     await envoyerCodeMultiCanal({
       utilisateurId: resultat.utilisateurId,
@@ -299,7 +300,6 @@ async function inscrireDonneur(data, adresseIp = null) {
 // ============================================
 
 async function activerCompte({ courriel, telephone, code }, adresseIp = null) {
-  // Recherche par email ou téléphone
   let utilisateur = null;
   if (courriel) {
     utilisateur = await authRepository.findUtilisateurByEmail(courriel);
@@ -330,7 +330,6 @@ async function activerCompte({ courriel, telephone, code }, adresseIp = null) {
     activation.id
   );
 
-  // 📝 Audit
   await journalAudit.enregistrer({
     utilisateur_id: utilisateur.id,
     action: "ACTIVATION_COMPTE",
@@ -338,14 +337,12 @@ async function activerCompte({ courriel, telephone, code }, adresseIp = null) {
     adresse_ip: adresseIp,
   });
 
-  // 🔔 Notification interne
   await notificationService.notifier(utilisateur.id, {
-    titre: "Compte activé ✅",
+    titre: "Compte activé",
     message: "Votre compte Aidora est actif. Vous pouvez vous connecter.",
     type: "SYSTEME",
   });
 
-  // 📧 Email de bienvenue
   if (utilisateur.email) {
     emailService
       .envoyerBienvenueDonneur({
@@ -370,7 +367,6 @@ async function renvoyerCodeActivation({ courriel, telephone }) {
   if (courriel) utilisateur = await authRepository.findUtilisateurByEmail(courriel);
   else if (telephone) utilisateur = await authRepository.findUtilisateurByTelephone(telephone);
 
-  // Réponse générique (anti-énumération)
   if (!utilisateur) {
     return {
       message: "Si un compte correspondant existe, un nouveau code sera envoyé.",
@@ -387,7 +383,6 @@ async function renvoyerCodeActivation({ courriel, telephone }) {
 
   await authRepository.remplacerActivation(utilisateur.id, codeHash, dateExpiration);
 
-  // 📤 Envoi du nouveau code
   await envoyerCodeMultiCanal({
     utilisateurId: utilisateur.id,
     prenom: utilisateur.prenom,
@@ -432,7 +427,6 @@ async function demanderReinitialisation({ courriel, telephone }) {
     action: "DEMANDE_REINITIALISATION_MDP",
   });
 
-  // 📤 Envoi du code
   await envoyerCodeMultiCanal({
     utilisateurId: utilisateur.id,
     prenom: utilisateur.prenom,
@@ -488,7 +482,7 @@ async function reinitialiserMotDePasse(
   });
 
   await notificationService.notifier(utilisateur.id, {
-    titre: "Mot de passe réinitialisé 🔒",
+    titre: "Mot de passe réinitialisé",
     message:
       "Votre mot de passe a été réinitialisé. Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
     type: "ALERTE",
@@ -526,7 +520,7 @@ async function modifierMotDePasse(
   });
 
   await notificationService.notifier(utilisateurId, {
-    titre: "Mot de passe modifié 🔒",
+    titre: "Mot de passe modifié",
     message:
       "Votre mot de passe a bien été modifié. Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
     type: "ALERTE",
@@ -539,11 +533,6 @@ async function modifierMotDePasse(
 // INVITATION PAR LA BANQUE (registre)
 // ============================================
 
-/**
- * Invite un donneur du registre papier à rejoindre la plateforme.
- * Crée un enregistrement dans `invitations_donneurs` (PAS de compte utilisateur).
- * Le donneur s'inscrira ensuite lui-même avec le code reçu.
- */
 async function inviterDonneursParBanque(data, utilisateurAdmin = null) {
   const {
     etablissementId,
@@ -598,7 +587,6 @@ async function inviterDonneursParBanque(data, utilisateurAdmin = null) {
     },
   });
 
-  // 📤 Envoi de l'invitation
   const envois = [];
 
   if (email) {
@@ -640,37 +628,43 @@ async function inviterDonneursParBanque(data, utilisateurAdmin = null) {
 // ACCEPTER UNE INVITATION
 // ============================================
 
-/**
- * Le donneur accepte une invitation (reçue d'une banque) et finalise son inscription.
- * Il choisit son mot de passe.
- */
 async function accepterInvitation({ code, motDePasse }, adresseIp = null) {
   const invitation = await authRepository.trouverInvitationParCode(code);
   if (!invitation) {
     throw new AppError("Code d'invitation invalide ou expiré", 400, "CODE_INVALIDE");
   }
 
-  // Vérifier si le compte existe déjà (email/téléphone)
   const existant = await authRepository.findUtilisateurParEmailOuTelephone(
     invitation.email,
     invitation.telephone
   );
 
   if (existant) {
-    // Le compte existe déjà → on rattache simplement à la banque
     await authRepository.updateStatutInvitation(invitation.id, "ACCEPTEE");
-    throw new AppError(
-      "Un compte existe déjà avec ce contact. Connectez-vous et effectuez une demande de rattachement.",
-      409,
-      "COMPTE_DEJA_EXISTANT"
+    await authRepository.creerRattachementInitial(
+      existant.id,
+      invitation.etablissement_id,
+      "INVITATION"
     );
+    await journalAudit.enregistrer({
+      utilisateur_id: existant.id,
+      action: "ACCEPTER_INVITATION",
+      nouvelle_valeur: {
+        invitation_id: invitation.id,
+        etablissement_id: invitation.etablissement_id,
+      },
+      adresse_ip: adresseIp,
+    });
+    return {
+      utilisateurId: existant.id,
+      message: "Invitation acceptée. Vous êtes rattaché à l'établissement.",
+    };
   }
 
   const motDePasseHash = await bcrypt.hash(motDePasse, BCRYPT_ROUNDS);
   const codeActivation = genererCodeActivation();
   const codeHash = hashCode(codeActivation);
 
-  // Créer le donneur + rattachement automatique
   const resultat = await authRepository.creerDonneurInscription({
     nom: invitation.nom,
     prenom: invitation.prenom,
@@ -679,18 +673,21 @@ async function accepterInvitation({ code, motDePasse }, adresseIp = null) {
     motDePasseHash,
     groupeSanguin: invitation.groupe_sanguin || "O",
     rhesus: invitation.rhesus || "POSITIF",
+    dateNaissance: null,
+    sexe: null,
+    latitude: null,
+    longitude: null,
+    ville: null,
+    quartier: null,
     codeActivation,
     codeHash,
   });
 
-  // Rattacher automatiquement à la banque d'origine
   await authRepository.creerRattachementInitial(
     resultat.utilisateurId,
     invitation.etablissement_id,
-    "REGISTRE_MANUEL"
+    "INVITATION"
   );
-
-  // Marquer l'invitation comme acceptée
   await authRepository.updateStatutInvitation(invitation.id, "ACCEPTEE");
 
   await journalAudit.enregistrer({
@@ -703,20 +700,22 @@ async function accepterInvitation({ code, motDePasse }, adresseIp = null) {
     adresse_ip: adresseIp,
   });
 
-  // 📤 Envoyer le code d'activation
-  await envoyerCodeMultiCanal({
-    utilisateurId: resultat.utilisateurId,
-    prenom: invitation.prenom,
-    email: invitation.email,
-    telephone: invitation.telephone,
-    code: codeActivation,
-    type: "ACTIVATION",
-  });
+  try {
+    await envoyerCodeMultiCanal({
+      utilisateurId: resultat.utilisateurId,
+      prenom: invitation.prenom,
+      email: invitation.email,
+      telephone: invitation.telephone,
+      code: codeActivation,
+      type: "ACTIVATION",
+    });
+  } catch (err) {
+    logger.error(`[Auth] Envoi code après invitation : ${err.message}`);
+  }
 
   return {
     utilisateurId: resultat.utilisateurId,
-    message:
-      "Inscription réussie. Un code d'activation vous a été envoyé pour activer votre compte.",
+    message: "Inscription réussie. Un code d'activation vous a été envoyé pour activer votre compte.",
   };
 }
 
@@ -735,7 +734,6 @@ module.exports = {
   modifierMotDePasse,
   inviterDonneursParBanque,
   accepterInvitation,
-  // Utilitaires
   genererCodeActivation,
   hashCode,
   calculerExpiration,
