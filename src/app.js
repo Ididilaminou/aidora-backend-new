@@ -43,14 +43,25 @@ app.set("trust proxy", 1);
 app.use(helmet());
 
 // --- CORS ---
-const origines = (process.env.CORS_ORIGINS || "").split(",").filter(Boolean);
+// ============================================
+// CORS
+// ============================================
+const origines = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: origines.length ? origines : "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    origin: origines.length ? origines : true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],   // ✅ OPTIONS ajouté
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
+
+// Gestion explicite du preflight OPTIONS
+app.options(/.*/, cors());
 
 // --- Parsing JSON ---
 app.use(express.json({ limit: "1mb" }));
