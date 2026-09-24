@@ -1,0 +1,84 @@
+[2026-09-17 10:47:01] ERROR: Impossible de se connecter à MySQL: 
+[2026-09-17 10:54:29] ERROR: Impossible de se connecter à MySQL: Access denied for user ''@'localhost' (using password: NO)
+[2026-09-17 11:15:04] ERROR: Impossible de se connecter à MySQL: 
+[2026-09-17 20:14:58] ERROR: Error: Unknown column 'doit_changer_mot_de_passe' in 'field list'
+    at Object.findUtilisateurByIdentifiant (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.repository.js:16:29)
+    at Object.login (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.service.js:120:44)
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.controller.js:34:32
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\utils\asyncHandler.js:5:21
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at validate (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\middlewares\validate.js:8:32)
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at middleware (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express-validator\lib\middlewares\check.js:16:13)
+[2026-09-17 20:35:11] ERROR: TypeError: Cannot read properties of undefined (reading 'id')
+    at Object.creer (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.service.js:133:27)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.controller.js:44:18
+[2026-09-17 20:36:09] ERROR: TypeError: Cannot read properties of undefined (reading 'id')
+    at Object.creer (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.service.js:133:27)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.controller.js:44:18
+[2026-09-17 20:39:40] ERROR: TypeError: Cannot read properties of undefined (reading 'id')
+    at Object.creer (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.service.js:146:42)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\personnels\personnels.controller.js:54:18
+[2026-09-17 20:48:29] ERROR: Error: Un compte existe déjà avec cet telephone
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.repository.js:141:22
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async withTransaction (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\config\db.js:56:20)
+    at async Object.inscrireDonneur (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.service.js:240:20)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\auth\auth.controller.js:54:18
+[2026-09-18 20:01:48] ERROR: TypeError: Cannot read properties of undefined (reading 'id')
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\notifications\notifications.controller.js:12:55
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\utils\asyncHandler.js:5:21
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:284:15
+    at router.process_params (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:280:10)
+    at authenticate (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\middlewares\auth.middleware.js:22:5)
+[2026-09-18 22:01:29] ERROR: ReferenceError: Cannot access 'demande' before initialization
+    at Object.creer (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\demandes\demandes.service.js:81:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\demandes\demandes.controller.js:48:18
+[2026-09-18 22:03:50] ERROR: Error: Table 'aidora.historique_demandes_sang' doesn't exist
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\demandes\demandes.repository.js:157:16
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async withTransaction (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\config\db.js:38:20)
+    at async Object.creer (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\demandes\demandes.service.js:81:19)
+    at async C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\demandes\demandes.controller.js:48:18
+[2026-09-23 16:49:44] ERROR: TypeError: service.listerLots is not a function
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\poches\poches.controller.js:93:32
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\utils\asyncHandler.js:5:21
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:284:15
+    at router.process_params (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:280:10)
+    at authenticate (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\middlewares\auth.middleware.js:22:5)
+[2026-09-23 16:49:50] ERROR: TypeError: service.listerLots is not a function
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\poches\poches.controller.js:93:32
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\utils\asyncHandler.js:5:21
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:284:15
+    at router.process_params (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:280:10)
+    at authenticate (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\middlewares\auth.middleware.js:22:5)
+[2026-09-23 16:56:46] ERROR: TypeError: service.listerLots is not a function
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\modules\poches\poches.controller.js:93:32
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\utils\asyncHandler.js:5:21
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\layer.js:95:5)
+    at C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:284:15
+    at router.process_params (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\node_modules\express\lib\router\index.js:280:10)
+    at authenticate (C:\Users\BRAYAN\Desktop\aidora final\aidora-backend\src\middlewares\auth.middleware.js:22:5)
