@@ -3,6 +3,7 @@ const { body } = require("express-validator");
 const controller = require("./auth.controller");
 const validate = require("../../middlewares/validate");
 const auth = require("../../middlewares/auth.middleware");
+const { loginLimiter } = require("../../middlewares/rateLimiter");
 
 const router = express.Router();
 
@@ -146,7 +147,7 @@ const accepterInvitationRules = [
 // ROUTES PUBLIQUES
 // ============================================
 
-router.post("/login", loginRules, validate, controller.login);
+router.post("/login", loginLimiter, loginRules, validate, controller.login);
 router.post("/inscription-donneur", inscriptionDonneurRules, validate, controller.inscrireDonneur);
 router.post("/activation", activationRules, validate, controller.activerCompte);
 router.post("/renvoyer-activation", renvoyerCodeRules, validate, controller.renvoyerCode);
