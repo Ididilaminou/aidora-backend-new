@@ -3,6 +3,7 @@
 // ============================================
 
 const { pool, withTransaction } = require("../../config/db");
+const AppError = require("../../utils/AppError");
 
 // ============================================
 // LECTURE UTILISATEUR
@@ -165,10 +166,11 @@ async function creerDonneurInscription(data) {
     if (existants.length > 0) {
       const conflit = existants[0];
       const champ = conflit.email === data.email ? "email" : "telephone";
-      const erreur = new Error(`Un compte existe déjà avec cet ${champ}`);
-      erreur.status = 409;
-      erreur.code = "UTILISATEUR_DEJA_EXISTANT";
-      throw erreur;
+      throw new AppError(
+        `Un compte existe déjà avec cet ${champ}`,
+        409,
+        champ === "email" ? "EMAIL_DEJA_UTILISE" : "TELEPHONE_DEJA_UTILISE"
+      );
     }
 
     // 2. Créer l'utilisateur (statut INACTIF par défaut)
@@ -239,10 +241,11 @@ async function creerDonneurParBanque(data) {
     );
 
     if (existants.length > 0) {
-      const erreur = new Error("Un compte existe déjà avec ces informations");
-      erreur.status = 409;
-      erreur.code = "UTILISATEUR_DEJA_EXISTANT";
-      throw erreur;
+      throw new AppError(
+        "Un compte existe déjà avec ces informations",
+        409,
+        "UTILISATEUR_DEJA_EXISTANT"
+      );
     }
 
     const [userResult] = await conn.query(
@@ -445,7 +448,6 @@ async function creerRattachementInitial(donneurId, etablissementId, source = "IN
   );
 }
 
-
 // ============================================
 // EXPORTS
 // ============================================
@@ -457,27 +459,27 @@ module.exports = {
   findUtilisateurByTelephone,
   findUtilisateurById,
   findUtilisateurParEmailOuTelephone,
-  
+
   // Extras rôle
   getDonneurExtras,
   getPersonnelExtras,
-  
+
   // Inscription
   creerDonneurInscription,
   creerDonneurParBanque,
-  
+
   // Invitations
   creerInvitation,
   trouverInvitationParCode,
   updateStatutInvitation,
   listerInvitationsEnAttente,
-  
+
   // Activation
   findActivationValide,
   activerCompteTransactionnel,
   remplacerActivation,
   creerRattachementInitial,
-  
+
   // Mot de passe
   changerMotDePasseTransactionnel,
   updateMotDePasse,
