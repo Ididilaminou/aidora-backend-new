@@ -10,6 +10,10 @@ const emailService = require("../../services/emailService");
 
 const BCRYPT_ROUNDS = 12;
 
+async function listerTous(seulementGeo = false) {
+      return donneurRepository.listerTousLesDonneurs({ seulementGeo });
+    }
+
 // ============================================
 // UC1 : Créer un compte donneur (par le personnel, après un don physique)
 // 3 insertions liées (utilisateurs, donneurs, activations_compte)
@@ -31,9 +35,7 @@ async function creerDonneur(data, etablissementId, utilisateurCreateur = null) {
       );
     }
 
-    async function listerTous(seulementGeo = false) {
-      return donneurRepository.listerTousLesDonneurs({ seulementGeo });
-    }
+    
         // 1. Créer l'utilisateur
     const utilisateurId = await donneurRepository.insertUtilisateur(data, conn);
 
