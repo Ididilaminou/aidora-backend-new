@@ -1,8 +1,15 @@
+// ============================================================
+// AIDORA — REPOSITORY PERSONNELS
+// ------------------------------------------------------------
+// Gère à la fois les PERSONNELS (banque/hôpital) et les
+// ADMINISTRATEURS. Utilise LEFT JOIN pour inclure les deux.
+// ============================================================
+
 const { pool, withTransaction } = require("../../config/db");
 
-/**
- * Liste les personnels avec filtres et pagination.
- */
+// ============================================
+// LISTE
+// ============================================
 async function findAll({
   role,
   etablissement_id,
@@ -14,9 +21,11 @@ async function findAll({
     SELECT u.id, u.nom, u.prenom, u.email, u.telephone,
            u.role, u.statut_compte, u.date_creation,
            p.fonction, p.etablissement_id,
-           e.nom AS etablissement_nom
+           e.nom AS etablissement_nom,
+           a.niveau_acces
     FROM utilisateurs u
-    INNER JOIN personnels p ON p.id = u.id
+    LEFT JOIN personnels p ON p.id = u.id
+    LEFT JOIN administrateurs a ON a.id = u.id
     LEFT JOIN etablissements e ON e.id = p.etablissement_id
     WHERE u.role IN ('PERSONNEL_BANQUE', 'PERSONNEL_HOPITAL', 'ADMINISTRATEUR')
   `;
@@ -35,12 +44,10 @@ async function findAll({
   let countSql = `
     SELECT COUNT(*) AS total
     FROM utilisateurs u
-    INNER JOIN personnels p ON p.id = u.id
     WHERE u.role IN ('PERSONNEL_BANQUE', 'PERSONNEL_HOPITAL', 'ADMINISTRATEUR')
   `;
   const countParams = [];
   if (role) { countSql += " AND u.role = ?"; countParams.push(role); }
-  if (etablissement_id) { countSql += " AND p.etablissement_id = ?"; countParams.push(etablissement_id); }
   if (statut_compte) { countSql += " AND u.statut_compte = ?"; countParams.push(statut_compte); }
 
   const [countRows] = await pool.query(countSql, countParams);
@@ -53,17 +60,19 @@ async function findAll({
   };
 }
 
-/**
- * Récupère un personnel par ID utilisateur.
- */
+// ============================================
+// LECTURE
+// ============================================
 async function findById(id) {
   const [rows] = await pool.query(
     `SELECT u.id, u.nom, u.prenom, u.email, u.telephone,
             u.role, u.statut_compte, u.date_creation,
             p.fonction, p.etablissement_id,
-            e.nom AS etablissement_nom
+            e.nom AS etablissement_nom,
+            a.niveau_acces
      FROM utilisateurs u
-     INNER JOIN personnels p ON p.id = u.id
+     LEFT JOIN personnels p ON p.id = u.id
+     LEFT JOIN administrateurs a ON a.id = u.id
      LEFT JOIN etablissements e ON e.id = p.etablissement_id
      WHERE u.id = ?`,
     [id]
@@ -71,16 +80,13 @@ async function findById(id) {
   return rows[0] || null;
 }
 
-/**
- * Récupère un personnel par son ID utilisateur (pour "moi").
- */
 async function findByUserId(id) {
   return findById(id);
 }
 
-/**
- * Vérifie si un courriel existe déjà.
- */
+// ============================================
+// UNICITÉ
+// ============================================
 async function emailExiste(courriel) {
   const [rows] = await pool.query(
     "SELECT id FROM utilisateurs WHERE email = ?",
@@ -89,9 +95,6 @@ async function emailExiste(courriel) {
   return rows.length > 0;
 }
 
-/**
- * Vérifie si un téléphone existe déjà.
- */
 async function telephoneExiste(telephone) {
   const [rows] = await pool.query(
     "SELECT id FROM utilisateurs WHERE telephone = ?",
@@ -100,9 +103,14 @@ async function telephoneExiste(telephone) {
   return rows.length > 0;
 }
 
-/**
- * Crée un utilisateur + un personnel + un administrateur (si applicable) en transaction.
- */
+// ============================================
+// CRÉATION
+// ============================================================
+// ⚠️  Le compte est créé ACTIF dès le départ.
+//     L'admin créateur a déjà validé.
+//     L'utilisateur devra changer son mot de passe
+//     à la 1ère connexion (doit_changer_mot_de_passe = 1).
+// ============================================================
 async function creerUtilisateurEtPersonnel(donnees) {
   return withTransaction(async (conn) => {
     const {
@@ -116,30 +124,33 @@ async function creerUtilisateurEtPersonnel(donnees) {
       fonction,
     } = donnees;
 
-    // 1. Créer l'utilisateur
+    // 1. Créer l'utilisateur (ACTIF + changer mdp)
     const [userResult] = await conn.query(
       `INSERT INTO utilisateurs
-       (nom, prenom, email, mot_de_passe, telephone, role, statut_compte)
-       VALUES (?, ?, ?, ?, ?, ?, 'INACTIF')`,
+         (nom, prenom, email, mot_de_passe, telephone, role,
+          statut_compte, doit_changer_mot_de_passe)
+       VALUES (?, ?, ?, ?, ?, ?, 'ACTIF', 1)`,
       [nom, prenom, courriel, motDePasseHash, telephone, role]
     );
 
     const userId = userResult.insertId;
 
-    // 2. Créer le personnel ou l'administrateur
+    // 2. Créer la fiche selon le rôle
     if (role === "ADMINISTRATEUR") {
+      // → Table administrateurs
       await conn.query(
         `INSERT INTO administrateurs (id, niveau_acces) VALUES (?, 'STANDARD')`,
         [userId]
       );
     } else {
+      // → Table personnels
       await conn.query(
         `INSERT INTO personnels (id, fonction, etablissement_id) VALUES (?, ?, ?)`,
         [userId, fonction || null, etablissement_id || null]
       );
     }
 
-    // 3. Retourner l'utilisateur créé (sans mot de passe)
+    // 3. Retourner l'utilisateur créé
     const [rows] = await conn.query(
       `SELECT id, nom, prenom, email, telephone, role, statut_compte, date_creation
        FROM utilisateurs WHERE id = ?`,
@@ -150,13 +161,12 @@ async function creerUtilisateurEtPersonnel(donnees) {
   });
 }
 
-/**
- * Met à jour un personnel.
- */
+// ============================================
+// MISE À JOUR
+// ============================================
 async function update(id, donnees) {
   const { prenom, nom, telephone, fonction } = donnees;
 
-  // Mettre à jour utilisateurs + personnels en transaction
   return withTransaction(async (conn) => {
     const userUpdates = [];
     const userParams = [];
@@ -193,9 +203,6 @@ async function update(id, donnees) {
   });
 }
 
-/**
- * Met à jour l'établissement d'un personnel.
- */
 async function updateEtablissement(id, etablissementId) {
   await pool.query(
     "UPDATE personnels SET etablissement_id = ? WHERE id = ?",
@@ -204,9 +211,6 @@ async function updateEtablissement(id, etablissementId) {
   return findById(id);
 }
 
-/**
- * Met à jour le statut d'un compte.
- */
 async function updateStatut(id, statut) {
   await pool.query(
     "UPDATE utilisateurs SET statut_compte = ? WHERE id = ?",
@@ -215,9 +219,6 @@ async function updateStatut(id, statut) {
   return findById(id);
 }
 
-/**
- * Supprime un personnel (cascade sur utilisateurs → personnels).
- */
 async function delete_(id) {
   await pool.query("DELETE FROM utilisateurs WHERE id = ?", [id]);
 }

@@ -418,6 +418,61 @@ async function verifierConnexion() {
   }
 }
 
+/**
+ * Envoie les identifiants (email + mot de passe temporaire) à un nouveau personnel.
+ * Le personnel devra changer son mot de passe à la première connexion.
+ */
+async function envoyerIdentifiantsPersonnel({
+  destinataire,
+  prenom,
+  nom,
+  email,
+  motDePasseTemporaire,
+  nomEtablissement,
+  role,
+  utilisateurId = null,
+}) {
+  const sujet = "Aidora — Vos identifiants de connexion";
+
+  const libelleRole =
+    role === "PERSONNEL_BANQUE"
+      ? "Personnel de banque de sang"
+      : role === "PERSONNEL_HOPITAL"
+      ? "Personnel d'hôpital"
+      : role;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">Bienvenue sur Aidora 🩸</h2>
+      <p>Bonjour <strong>${prenom} ${nom}</strong>,</p>
+      <p>Un compte professionnel vous a été créé sur la plateforme Aidora.</p>
+
+      <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p style="font-size: 12px; color: #64748b; margin: 0 0 10px;">VOS IDENTIFIANTS</p>
+        <p style="margin: 5px 0;"><strong>Rôle :</strong> ${libelleRole}</p>
+        ${nomEtablissement ? `<p style="margin: 5px 0;"><strong>Établissement :</strong> ${nomEtablissement}</p>` : ""}
+        <p style="margin: 5px 0;"><strong>Email :</strong> ${email}</p>
+        <p style="margin: 5px 0;"><strong>Mot de passe temporaire :</strong>
+          <span style="font-family: monospace; font-size: 18px; color: #dc2626; font-weight: bold;">${motDePasseTemporaire}</span>
+        </p>
+      </div>
+
+      <p><strong>⚠️ Important :</strong> Ce mot de passe est temporaire. Vous devrez le changer à votre première connexion.</p>
+
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${FRONTEND_URL}/connexion" style="background: #dc2626; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
+          Me connecter
+        </a>
+      </p>
+
+      <p style="color: #64748b; font-size: 12px;">Si vous n'êtes pas à l'origine de cette demande, contactez immédiatement votre administrateur.</p>
+      <p style="color: #94a3b8; font-size: 11px;">— L'équipe Aidora</p>
+    </div>
+  `;
+
+  return envoyer({ destinataire, sujet, html, utilisateurId });
+}
+
 // ============================================
 // EXPORTS
 // ============================================
@@ -430,5 +485,6 @@ module.exports = {
   envoyerBienvenueDonneur,
   envoyerAlerteEligibiliteExpiree,
   envoyerCodeReinitialisation,
+  envoyerIdentifiantsPersonnel,
   verifierConnexion,
 };

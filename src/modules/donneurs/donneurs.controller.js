@@ -17,6 +17,12 @@ const activer = asyncHandler(async (req, res) => {
   return success(res, result, "Compte activé avec succès");
 });
 
+const listerTous = asyncHandler(async (req, res) => {
+  const seulementGeo = req.query.geo === "true";
+  const result = await service.listerTous(seulementGeo);
+  return success(res, result);
+});
+
 const profil = asyncHandler(async (req, res) => {
   const result = await donneurService.getProfil(req.user.id);
   return success(res, result);
@@ -64,4 +70,5 @@ module.exports = {
   position,
   lister,
   rechercherProches,
+  listerTous,
 };

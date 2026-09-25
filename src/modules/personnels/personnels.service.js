@@ -114,6 +114,10 @@ function genererHtmlIdentifiants({ prenom, courriel, motDePasseTemporaire }) {
 /**
  * Envoie les identifiants par SMS + Email.
  * Ne bloque JAMAIS la création en cas d'échec.
+ *
+ * ⚠️ On utilise les VRAIES signatures des services :
+ *    - smsService.envoyerCodeActivationDonneur({ telephone, prenom, code })
+ *    - emailService.envoyer({ destinataire, sujet, html, utilisateurId })
  */
 async function envoyerIdentifiants({
   prenom,
@@ -121,20 +125,23 @@ async function envoyerIdentifiants({
   courriel,
   telephone,
   motDePasseTemporaire,
+  utilisateurId = null,
 }) {
   const resultats = { sms: false, email: false };
-
-  const texteSms =
-    `Bienvenue ${prenom} sur Aidora !\n` +
-    `Votre compte personnel est actif.\n\n` +
-    `Email : ${courriel}\n` +
-    `Mot de passe temporaire : ${motDePasseTemporaire}\n\n` +
-    `Connexion : ${FRONTEND_URL}/connexion`;
 
   // -------- SMS --------
   if (telephone) {
     try {
-      await smsService.envoyer(telephone, texteSms);
+      await smsService.envoyer({
+        telephone,
+        message:
+          `Aidora : Bienvenue ${prenom} ! ` +
+          `Votre compte personnel est actif. ` +
+          `Email : ${courriel} | ` +
+          `Mot de passe temporaire : ${motDePasseTemporaire} | ` +
+          `Connectez-vous : ${FRONTEND_URL}/connexion`,
+        utilisateurId,
+      });
       logger.info(`📱 SMS identifiants envoyé à ${telephone}`);
       resultats.sms = true;
     } catch (err) {
@@ -150,11 +157,12 @@ async function envoyerIdentifiants({
         courriel,
         motDePasseTemporaire,
       });
-      await emailService.envoyer(
-        courriel,
-        "Aidora — Vos identifiants de connexion",
-        html
-      );
+      await emailService.envoyer({
+        destinataire: courriel,
+        sujet: "Aidora — Vos identifiants de connexion",
+        html,
+        utilisateurId,
+      });
       logger.info(`📧 Email identifiants envoyé à ${courriel}`);
       resultats.email = true;
     } catch (err) {
@@ -166,7 +174,6 @@ async function envoyerIdentifiants({
 
   return resultats;
 }
-
 /**
  * Liste les personnels avec filtres.
  */
@@ -286,8 +293,11 @@ async function creer(donnees, createur) {
     createur_id: createur.id,
   });
 
+  const libelleCompte =
+    role === "ADMINISTRATEUR" ? "Administrateur" : "Compte personnel";
+
   logger.info(
-    `Compte personnel #${resultat.id} créé par #${createur.id} (rôle : ${role})`
+    `${libelleCompte} #${resultat.id} créé par #${createur.id} (rôle : ${role})`
   );
 
   // 📝 Audit
@@ -321,6 +331,7 @@ async function creer(donnees, createur) {
     courriel,
     telephone,
     motDePasseTemporaire,
+    utilisateurId: resultat.id,
   });
 
   return {

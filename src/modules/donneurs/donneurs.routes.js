@@ -71,6 +71,13 @@ router.get(
   controller.rechercherProches
 );
 
+router.get(
+  "/admin/tous",
+  authenticate,
+  authorize("ADMINISTRATEUR"),
+  controller.listerTous
+);
+
 router.get("/moi", authorize("DONNEUR"), controller.profil);
 
 router.put(

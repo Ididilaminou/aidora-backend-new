@@ -174,6 +174,32 @@ async function rechercherDonneursProches({ groupeSanguin, rhesus, latitude, long
   return rows;
 }
 
+/**
+ * Liste TOUS les donneurs (admin) avec ou sans coordonnées.
+ */
+async function listerTousLesDonneurs({ seulementGeo = false } = {}) {
+  let sql = `
+    SELECT 
+      u.id, u.nom, u.prenom, u.telephone, u.statut_compte,
+      d.groupe_sanguin, d.rhesus, d.disponible, d.ville, d.quartier,
+      d.latitude, d.longitude, d.etablissement_id,
+      e.nom AS etablissement_nom
+    FROM donneurs d
+    INNER JOIN utilisateurs u ON u.id = d.id
+    LEFT JOIN etablissements e ON e.id = d.etablissement_id
+    WHERE u.role = 'DONNEUR'
+  `;
+
+  if (seulementGeo) {
+    sql += " AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL";
+  }
+
+  sql += " ORDER BY u.date_creation DESC";
+
+  const [rows] = await pool.query(sql);
+  return rows;
+}
+
 module.exports = {
   findUtilisateurByTelephoneOuEmail,
   insertUtilisateur,
@@ -189,4 +215,5 @@ module.exports = {
   updatePosition,
   listByEtablissement,
   rechercherDonneursProches,
+  listerTousLesDonneurs,
 };

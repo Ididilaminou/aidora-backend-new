@@ -1,0 +1,52 @@
+NODE_ENV=production
+PORT=4000
+CORS_ORIGINS=
+
+# ============================================
+# BASE DE DONNÉES
+# ============================================
+DB_HOST=gateway01.ap-northeast-1.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=eLvnSjwwLuDDn3X.root
+DB_PASSWORD=Vrnh929uhKxFbLQB
+DB_NAME=aidora
+DB_CA_PATH=C:/Users/BRAYAN/Desktop/aidora-ca.pem
+
+JWT_SECRET=jythrgesfdrgfthgyjuhkikuyjthrgdfhjkhjgfgdrfuiouytrtyuiy7tredgfthyguiyutrfyguiytrhyjukytrfgyhiutrfyhgjuhkiuytretdyuio
+JWT_EXPIRES_IN=7d
+
+# ============================================
+# SMS — mode console (dev)
+# ============================================
+# SMS_PROVIDER=mock
+SMS_ACTIF=true
+SMS_SENDER=AIDORA
+
+# Orange SMS Cameroun (quand tu passeras en prod)
+ SMS_PROVIDER=orange
+ ORANGE_SMS_SENDER=AIDORA
+ ORANGE_SMS_TOKEN=Basic VUNsNDBPSWN3ZllJMnlkZ0dMR1F4UjJ4QXlSRmRNb2k6QzlnTE51Q2xLNVJXVVkyeTg3QVB3RTJ5Q0psUzIxemlxOE51RU1QdVZPdGc=
+
+# ============================================
+# EMAIL — Brevo
+# ============================================
+EMAIL_PROVIDER=brevo
+EMAIL_ACTIF=true
+EMAIL_FROM_NAME=Aidora
+EMAIL_FROM_EMAIL=souleymanoulaminou38@gmail.com
+BREVO_API_KEY=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
+
+FRONTEND_URL=http://localhost:5173
+
+# ============================================
+# RATE LIMITING
+# ============================================
+API_WINDOW_MS=900000
+API_MAX=3000
+LOGIN_WINDOW_MS=900000
+LOGIN_MAX=10
+
+# SSL pour TiDB Cloud (obligatoire en prod et pour le seed)
+TIDB_ENABLE_SSL=true
+
+DB_CA_PATH=./certs/tidb-ca.pem

@@ -31,7 +31,10 @@ async function creerDonneur(data, etablissementId, utilisateurCreateur = null) {
       );
     }
 
-    // 1. Créer l'utilisateur
+    async function listerTous(seulementGeo = false) {
+      return donneurRepository.listerTousLesDonneurs({ seulementGeo });
+    }
+        // 1. Créer l'utilisateur
     const utilisateurId = await donneurRepository.insertUtilisateur(data, conn);
 
     // 2. Créer le profil donneur
@@ -277,4 +280,5 @@ module.exports = {
   updatePosition,
   listerDonneurs,
   rechercherDonneursProches,
+  listerTous,
 };
