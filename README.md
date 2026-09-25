@@ -1,540 +1,79 @@
 
-# Aidora — Backend
+# 🩸 Aidora — Backend
 
-API REST pour la plateforme de gestion du don de sang Aidora.
+API REST de la plateforme **Aidora** : gestion du don de sang, des banques de sang et des hôpitaux au **Cameroun**.
 
-## 🚀 Démarrage rapide
+![Version](https://img.shields.io/badge/version-1.0.0-red)
+![Node.js](https://img.shields.io/badge/Node.js-20+-green)
+![Express](https://img.shields.io/badge/Express-5-black)
+![MySQL](https://img.shields.io/badge/MySQL-8-blue)
+![License](https://img.shields.io/badge/license-Academic-green)
 
-### Prérequis
+---
 
-- Node.js 20+
-- MySQL 8.0+ ou MariaDB 10.4+
-- npm
+## 📖 À propos
 
-### Installation
+Le backend Aidora expose une **API REST sécurisée** qui alimente :
+
+- 🩸 Les **donneurs** (inscription, profil, RDV, dons)
+- 🏥 Les **banques de sang** (stocks, poches, dons)
+- 🏨 Les **hôpitaux** (demandes, réceptions)
+- 👑 Les **administrateurs** (gestion globale)
+
+---
+
+## 🚀 Stack technique
+
+| Catégorie | Technologie |
+|---|---|
+| **Runtime** | Node.js 20+ |
+| **Framework** | Express 5 |
+| **Base de données** | MySQL 8 (TiDB Cloud en prod) |
+| **Authentification** | JWT (jsonwebtoken) |
+| **Hashage** | Bcrypt (bcryptjs) |
+| **Validation** | express-validator |
+| **Email** | Nodemailer + Brevo |
+| **SMS** | Mode mock (Orange/Twilio prêt) |
+| **Sécurité** | Helmet, CORS, Rate Limiting |
+| **Logs** | Winston |
+| **Config** | dotenv |
+
+---
+
+## 📋 Prérequis
+
+- **Node.js** ≥ 20
+- **npm** ≥ 10
+- **MySQL** 8 (local) **ou** compte TiDB Cloud (production)
+
+---
+
+## ⚙️ Installation
 
 ```bash
-# 1. Installer les dépendances
+# 1. Cloner le repo
+git clone https://github.com/Ididilaminou/aidora-backend-new.git
+cd aidora-backend-new
+
+# 2. Installer les dépendances
 npm install
 
-# 2. Configurer l'environnement
+# 3. Créer le fichier d'environnement
 cp .env.example .env
-# Éditer .env avec vos identifiants MySQL et services
-
-# 3. Créer la base de données
-mysql -u root -p < sql/schema.sql
-
-# 4. (Optionnel) Exécuter les migrations
-mysql -u root -p aidora < sql/migration_01_multi_rattachement.sql
-
-# 5. Créer le dossier uploads
-mkdir uploads
-
-# 6. Démarrer le serveur
-npm run dev
 ```
 
-**API disponible sur** : `http://localhost:4000/api`
-**Health check** : `http://localhost:4000/api/health`
-
----
-
-## 🏗️ Architecture
-
-Le projet suit une architecture **MVC en couches** :
-v
-Routes → Controllers → Services → Repositories
-
-| Couche | Responsabilité | Règle |
-|--------|----------------|-------|
-
-| **Routes** | Définit les endpoints, applique auth + rôle + validation | Une route = un middleware chain |
-| **Controllers** | Reçoit `req`/`res`, appelle le service, formate la réponse | **Aucune logique métier** |
-| **Services** | Règles métier, transactions, lève des `AppError` | Orchestre les appels repository |
-| **Repositories** | Requêtes SQL pures | **Aucune règle métier** |
-| **Validators** | Règles `express-validator` inline dans les routes | Une règle par champ |
-
-### Structure des dossiers
-
-src/
-├── config/              # DB + Logger
-├── middlewares/         # auth, errorHandler, rateLimiter, validate
-├── utils/               # AppError, asyncHandler, generateCode, response
-├── services/            # emailService, smsService
-└── modules/             # Un dossier par domaine métier
-    ├── auth/            # Inscription, login, activation, mot de passe
-    ├── donneurs/        # Profil, disponibilité, géoloc
-    ├── etablissements/  # CRUD banques + hôpitaux
-    ├── personnels/      # Comptes du personnel
-    ├── dons/            # Enregistrement et validation
-    ├── poches/          # Traçabilité des produits sanguins
-    ├── stock/           # Entrées/sorties + alertes seuil
-    ├── demandes/        # Hôpital → Banque
-    ├── notifications/   # Multicanal (interne + email + SMS)
-    ├── statistiques/    # Globales + par personnel
-    ├── rapports/        # Export PDF/Excel/CSV
-    ├── journal-audit/   # Traçabilité des actions
-    ├── rattachements/   # Multi-rattachement donneur ↔ établissement
-    ├── rdv/             # Créneaux + prise de RDV
-    └── registres/       # Import CSV + invitations
-
-Chaque module contient :
-
-- `<module>.routes.js` — Routes + validations `express-validator`
-- `<module>.controller.js` — Reçoit req/res
-- `<module>.service.js` — Logique métier
-- `<module>.repository.js` — Requêtes SQL
-
----
-
-## 🔒 Sécurité en place
-
-| Mécanisme | Implémentation |
-|-----------|----------------|
-
-| **Helmet** | En-têtes HTTP sécurisés |
-| **CORS** | Restreint via `CORS_ORIGINS` (`.env`) |
-| **Rate limiting** | 10 tentatives login / 15 min, 300 req API / 15 min par IP |
-| **bcrypt** | 12 rounds sur tous les mots de passe |
-| **JWT** | Expiration + vérification via `authenticate` + contrôle de rôle `authorize(...)` |
-| **Anti-énumération** | Message identique (email inconnu/mauvais mdp) + délai constant |
-| **Validation stricte** | Regex téléphone CM, groupes sanguins, email, longueurs |
-| **Transactions** | Opérations à risque de concurrence (création donneur, RDV, dons) |
-| **Logs structurés** | Winston → `logs/error.log`, `logs/combined.log` |
-| **Erreurs mappées** | Doublons, clés étrangères traduites en JSON propre |
-| **Fail-fast** | Le serveur refuse de démarrer si la BDD est injoignable |
-
----
-
-## 📡 Endpoints disponibles
-
-### 🔐 Authentification (`/api/auth`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| POST | `/login` | Public | Connexion (email ou téléphone) |
-| POST | `/logout` | Tous | Déconnexion (audit) |
-| POST | `/inscription-donneur` | Public | Inscription publique d'un donneur |
-| POST | `/activation` | Public | Activer un compte avec code |
-| POST | `/renvoyer-activation` | Public | Renvoyer le code d'activation |
-| POST | `/mot-de-passe-oublie` | Public | Demander une réinitialisation |
-| POST | `/reinitialiser-mot-de-passe` | Public | Réinitialiser avec code |
-| PUT | `/mot-de-passe` | Tous | Modifier son mot de passe |
-| POST | `/inviter-donneur` | Banque/Admin | Inviter un donneur du registre |
-| POST | `/accepter-invitation` | Public | Accepter une invitation banque |
-
-### 👤 Donneurs (`/api/donneurs`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/moi` | Donneur | Consulter son profil |
-| PUT | `/moi` | Donneur | Modifier son profil |
-| PATCH | `/moi/disponibilite` | Donneur | Basculer disponible/indisponible |
-| GET | `/recherche` | Personnel/Admin | Rechercher des donneurs |
-| POST | `/registre` | Banque | Enregistrer un donneur manuellement |
-
-### 🏥 Établissements (`/api/etablissements`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Personnel/Admin | Lister les établissements |
-| GET | `/:id` | Personnel/Admin | Consulter un établissement |
-| POST | `/` | Public | Créer un établissement |
-| PUT | `/:id` | Personnel/Admin | Modifier |
-| GET | `/recherche-proximite` | Public | Établissements proches (GPS) |
-| PATCH | `/:id/valider` | Admin | Valider |
-| PATCH | `/:id/rejeter` | Admin | Rejeter |
-| PATCH | `/:id/suspendre` | Admin | Suspendre |
-| PATCH | `/:id/reactiver` | Admin | Réactiver |
-
-### 👥 Personnels (`/api/personnels`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Admin | Lister |
-| GET | `/moi` | Personnel | Mon profil |
-| GET | `/:id` | Personnel/Admin | Consulter |
-| POST | `/` | Admin | Créer un compte |
-| PUT | `/:id` | Admin | Modifier |
-| PATCH | `/:id/etablissement` | Admin | Rattacher |
-| PATCH | `/:id/activer` | Admin | Activer |
-| PATCH | `/:id/desactiver` | Admin | Désactiver |
-| DELETE | `/:id` | Admin | Supprimer |
-
-### 🩸 Dons (`/api/dons`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Tous | Lister les dons |
-| GET | `/:id` | Tous | Consulter un don |
-| GET | `/donneur/:donneurId` | Donneur/Personnel | Dons d'un donneur |
-| POST | `/` | Banque | Enregistrer un don |
-| PATCH | `/:id/valider` | Banque | Valider + générer poches |
-| PATCH | `/:id/rejeter` | Banque | Rejeter |
-| DELETE | `/:id` | Admin | Supprimer |
-
-### 💉 Poches (`/api/poches`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Tous | Lister |
-| GET | `/:id` | Tous | Consulter |
-| GET | `/:id/historique` | Tous | Historique |
-| POST | `/` | Banque | Créer une poche |
-| PATCH | `/:id/statut` | Banque | Changer le statut |
-| PATCH | `/:id/vendre` | Banque | Marquer comme vendue |
-| DELETE | `/:id` | Admin | Supprimer |
-
-### 📦 Stock (`/api/stock`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Tous | Lister les stocks |
-| GET | `/alertes/seuils` | Tous | Stocks sous le seuil |
-| GET | `/etablissement/:id` | Tous | Stocks d'un établissement |
-| POST | `/` | Banque | Créer un stock |
-| PATCH | `/:id/entree` | Banque | Ajouter une entrée |
-| PATCH | `/:id/sortie` | Banque | Enregistrer une sortie |
-| PATCH | `/:id/ajustement` | Admin | Ajuster manuellement |
-| PATCH | `/:id/seuil` | Admin | Modifier le seuil |
-
-### 🏥 Demandes de sang (`/api/demandes`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Tous | Lister (filtré par rôle) |
-| GET | `/:id` | Tous | Consulter |
-| GET | `/:id/historique` | Tous | Historique |
-| POST | `/` | Hôpital | Créer une demande |
-| PATCH | `/:id/accepter` | Banque | Accepter |
-| PATCH | `/:id/rejeter` | Banque | Rejeter |
-| PATCH | `/:id/livrer` | Banque | Livrer |
-| PATCH | `/:id/confirmer-reception` | Hôpital | Confirmer réception |
-| PATCH | `/:id/annuler` | Hôpital/Admin | Annuler |
-
-### 📅 Rendez-vous (`/api/rdv`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/creneaux` | Tous | Lister les créneaux |
-| POST | `/creneaux` | Banque | Créer un créneau |
-| PUT | `/creneaux/:id` | Banque | Modifier un créneau |
-| DELETE | `/creneaux/:id` | Banque | Supprimer un créneau |
-| GET | `/` | Tous | Lister les RDV |
-| GET | `/moi` | Donneur | Mes RDV |
-| POST | `/` | Donneur | Prendre un RDV |
-| PATCH | `/:id/confirmer` | Banque | Confirmer |
-| PATCH | `/:id/annuler` | Tous | Annuler |
-| PATCH | `/:id/honore` | Banque | Marquer honoré |
-
-### 🔗 Rattachements (`/api/rattachements`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Personnel/Admin | Lister |
-| GET | `/moi` | Donneur | Mes rattachements |
-| GET | `/etablissement/:id` | Personnel | Rattachements d'un établissement |
-| POST | `/` | Banque | Créer un rattachement |
-| PATCH | `/:id/desactiver` | Banque | Désactiver |
-| PATCH | `/:id/reactiver` | Banque | Réactiver |
-| PATCH | `/:id/principal` | Donneur | Définir comme principal |
-
-### 📇 Registres (`/api/registres`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| POST | `/inviter` | Banque | Inviter un donneur |
-| POST | `/importer` | Banque | Importer un CSV |
-| GET | `/invitations` | Banque | Lister les invitations |
-| GET | `/invitations/stats` | Banque | Statistiques |
-| GET | `/invitations/:id` | Banque | Consulter |
-| DELETE | `/invitations/:id` | Banque | Annuler |
-| POST | `/accepter-invitation` | Public | Accepter |
-
-### 🔔 Notifications (`/api/notifications`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Tous | Mes notifications |
-| GET | `/non-lues` | Tous | Non lues |
-| GET | `/compteur` | Tous | Compteur |
-| GET | `/:id` | Tous | Consulter |
-| PATCH | `/:id/lue` | Tous | Marquer comme lue |
-| PATCH | `/toutes-lues` | Tous | Tout marquer |
-| DELETE | `/:id` | Tous | Supprimer |
-| POST | `/` | Admin | Créer |
-| POST | `/diffusion` | Admin | Diffuser en masse |
-
-### 📊 Statistiques (`/api/statistiques`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/globales` | Admin | Statistiques globales |
-| GET | `/etablissement/:id` | Personnel/Admin | Par établissement |
-| GET | `/moi/journalier` | Personnel | Mes stats journalières |
-| GET | `/moi/hebdomadaire` | Personnel | Mes stats hebdo |
-| GET | `/moi/mensuel` | Personnel | Mes stats mensuelles |
-| GET | `/moi/global` | Personnel | Mes stats globales |
-| GET | `/personnel/:id` | Admin | Stats d'un personnel |
-| GET | `/dons/evolution` | Admin/Banque | Évolution des dons |
-| GET | `/demandes/par-statut` | Tous | Répartition par statut |
-| GET | `/stocks/par-type` | Admin/Banque | Répartition des stocks |
-
-### 📄 Rapports (`/api/rapports`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Personnel/Admin | Lister |
-| GET | `/:id` | Personnel/Admin | Consulter |
-| GET | `/:id/telecharger` | Personnel/Admin | Télécharger |
-| POST | `/generer` | Personnel/Admin | Générer un rapport |
-| DELETE | `/:id` | Personnel/Admin | Supprimer |
-
-### 📜 Journal d'audit (`/api/journal-audit`)
-
-| Méthode | URL | Accès | Description |
-|---------|-----|-------|-------------|
-
-| GET | `/` | Admin | Lister |
-| GET | `/:id` | Admin | Consulter |
-| GET | `/utilisateur/:id` | Admin | Historique utilisateur |
-| GET | `/stats/actions` | Admin | Stats des actions |
-| DELETE | `/purger` | Admin | Purger les anciennes entrées |
-
----
-
-## 🌐 Variables d'environnement
-
-### `.env` (obligatoires)
-
-```env
-# Serveur
-PORT=4000
-NODE_ENV=development
-
-# Base de données
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=aidora
-
-# JWT
-JWT_SECRET=votre_cle_secrete_tres_longue_et_securisee
-JWT_EXPIRES_IN=1d
-
-# Frontend
-FRONTEND_URL=http://localhost:5173
-CORS_ORIGINS=http://localhost:5173
-```
-
-### Services externes (optionnels)
-
-```env
-# ============================================
-# EMAIL
-# ============================================
-EMAIL_PROVIDER=mock         # mock | gmail | smtp | sendgrid
-EMAIL_ACTIF=true
-EMAIL_FROM=Aidora <noreply@aidora.cm>
-
-# Gmail / SMTP
-# SMTP_HOST=smtp.gmail.com
-# SMTP_PORT=465
-# SMTP_SECURE=true
-# SMTP_USER=votre.email@gmail.com
-# SMTP_PASSWORD=mot_de_passe_application
-
-# SendGrid
-# SENDGRID_API_KEY=xxx
-
-# ============================================
-# SMS
-# ============================================
-SMS_PROVIDER=mock           # mock | orange | mtn | nexah | twilio
-SMS_ACTIF=true
-
-# Orange SMS Cameroun
-# ORANGE_SMS_TOKEN=xxx
-# ORANGE_SMS_SENDER=AIDORA
-
-# MTN Cameroun
-# MTN_SMS_API_KEY=xxx
-
-# Nexah
-# NEXAH_USER=xxx
-# NEXAH_PASSWORD=xxx
-
-# Twilio
-# TWILIO_ACCOUNT_SID=xxx
-# TWILIO_AUTH_TOKEN=xxx
-# TWILIO_PHONE_NUMBER=+xxx
-```
-
----
-
-## 🗄️ Base de données
-
-### Tables principales (20+)
-
-- `utilisateurs` — Comptes (tous rôles)
-- `donneurs` — Profils donneurs
-- `personnels` — Profils personnel
-- `administrateurs` — Profils admin
-- `etablissements` — Banques + hôpitaux
-- `activations_compte` — Codes d'activation
-- `dons` — Dons enregistrés
-- `poches` — Produits sanguins tracés
-- `historique_poches` — Traçabilité
-- `stocks` — Stocks agrégés
-- `mouvements_stock` — Historique mouvements
-- `demandes_sang` — Demandes hôpitaux
-- `distributions` — Livraisons
-- `notifications` — Notifications internes
-- `journal_audit` — Audit
-- `evaluations_ia` — Tests d'éligibilité IA
-- `rattachements_donneurs` — Multi-rattachement
-- `creneaux_rdv` — Créneaux disponibles
-- `rendez_vous` — RDV pris
-- `invitations_donneurs` — Invitations
-- `traces_sms` / `traces_email` — Traçabilité envois
-- `rapports` — Rapports générés
-- `statistiques` / `statistiques_personnel` — Stats
-
----
-
-## 🧪 Tests manuels (Flux complet)
-
-1. Connexion admin → token
-2. Créer établissement → ID
-3. Valider établissement
-4. Créer personnel banque
-5. Connexion personnel → token
-6. Inscription publique donneur
-7. Activation donneur
-8. Connexion donneur → token
-9. Créer créneau (banque)
-10. Prendre RDV (donneur)
-
----
-
-## 🛠️ Scripts npm
-
-```bash
-npm run dev        # Démarrage avec nodemon
-npm start          # Production
-```
-
----
-
-## 📦 Dépendances principales
-
-| Package | Usage |
-|---------|-------|
-
-| `express` | Framework web |
-| `mysql2` | Client MySQL (avec promises) |
-| `bcryptjs` | Hash des mots de passe |
-| `jsonwebtoken` | Génération/vérification JWT |
-| `express-validator` | Validation des entrées |
-| `helmet` | Sécurité HTTP |
-| `cors` | Gestion CORS |
-| `morgan` | Logs HTTP |
-| `winston` | Logs structurés |
-| `nodemailer` | Envoi d'emails |
-| `node-fetch` | Requêtes HTTP (SMS) |
-| `multer` | Upload de fichiers |
-| `csv-parser` | Lecture CSV |
-
----
-
-## 📊 État du projet
-
-| Aspect | Complétion |
-|--------|:----------:|
-
-| Backend (modules) | ✅ 95% |
-| Base de données | ✅ 100% |
-| Services externes | ✅ 100% (mock) |
-| Tests manuels | ✅ 60% |
-| Déploiement | ⏳ 0% |
-
----
-
-## 🚧 Roadmap
-
-### Phase 1 — Backend ✅
-
-- [x] Architecture MVC
-- [x] 15 modules fonctionnels
-- [x] Authentification JWT
-- [x] Multi-rattachement
-- [x] Notifications multicanal
-- [x] Audit complet
-
-### Phase 2 — Améliorations backend
-
-- [ ] Génération réelle de PDF/Excel
-- [ ] Tests automatisés (Jest + Supertest)
-- [ ] Documentation Swagger
-- [ ] Dockerisation
-- [ ] WebSocket (notifications temps réel)
-
-### Phase 3 — Frontend
-
-- [ ] Connexion du React aux nouvelles routes
-- [ ] Pages d'inscription publique
-- [ ] Pages de créneaux et RDV
-- [ ] Import CSV visuel
-
-### Phase 4 — Déploiement
-
-- [ ] Configuration production
-- [ ] Nginx + PM2
-- [ ] HTTPS
-- [ ] Sauvegardes automatiques
-
----
-
-## 📝 Licence
-
-Projet académique — Aidora © 2026
-
-## 👥 Contributeurs
-
-- BRAYAN (Développeur principal)
-
----
-
-**Pour toute question, consulter la documentation ou ouvrir une issue.**
-
----
-
-## 📄 `.env.example` (à créer aussi)
+### Fichier `.env`
 
 ```env
 # ============================================
 # SERVEUR
 # ============================================
-PORT=4000
 NODE_ENV=development
+PORT=4000
+CORS_ORIGINS=http://localhost:5173
 
 # ============================================
-# BASE DE DONNÉES
+# BASE DE DONNÉES — LOCAL (développement)
 # ============================================
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -543,63 +82,506 @@ DB_PASSWORD=
 DB_NAME=aidora
 
 # ============================================
+# BASE DE DONNÉES — TiDB CLOUD (production)
+# ============================================
+# DB_HOST=gateway01.xxx.prod.aws.tidbcloud.com
+# DB_PORT=4000
+# DB_USER=xxxxx.root
+# DB_PASSWORD=ton_mot_de_passe
+# DB_NAME=aidora
+# TIDB_ENABLE_SSL=true
+# TIDB_CA_PEM=-----BEGIN CERTIFICATE-----...
+
+# ============================================
 # JWT
 # ============================================
-JWT_SECRET=changez_cette_cle_par_une_longue_et_securisee
-JWT_EXPIRES_IN=1d
+JWT_SECRET=change_moi_par_une_longue_chaine_aleatoire
+JWT_EXPIRES_IN=7d
+
+# ============================================
+# EMAIL — BREVO
+# ============================================
+EMAIL_PROVIDER=brevo
+EMAIL_ACTIF=true
+EMAIL_FROM_NAME=Aidora
+EMAIL_FROM_EMAIL=noreply@aidora.cm
+BREVO_API_KEY=xkeysib-xxxxx
+
+# ============================================
+# SMS — MODE MOCK (développement)
+# ============================================
+SMS_PROVIDER=mock
+SMS_ACTIF=true
+SMS_SENDER=AIDORA
 
 # ============================================
 # FRONTEND
 # ============================================
 FRONTEND_URL=http://localhost:5173
-CORS_ORIGINS=http://localhost:5173
+```
 
-# ============================================
-# EMAIL
-# ============================================
-EMAIL_PROVIDER=mock
-EMAIL_ACTIF=true
-EMAIL_FROM=Aidora <noreply@aidora.cm>
+### Créer la base de données
 
-# Gmail / SMTP
-# SMTP_HOST=smtp.gmail.com
-# SMTP_PORT=465
-# SMTP_SECURE=true
-# SMTP_USER=
-# SMTP_PASSWORD=
+```bash
+mysql -u root -p < schema.sql
+```
 
-# SendGrid
-# SENDGRID_API_KEY=
+Puis **peupler** avec les données de test :
 
-# ============================================
-# SMS
-# ============================================
-SMS_PROVIDER=mock
-SMS_ACTIF=true
+```bash
+node src/scripts/seed.js
+```
 
-# Orange SMS Cameroun
-# ORANGE_SMS_TOKEN=
-# ORANGE_SMS_SENDER=AIDORA
+### Lancer le serveur
 
-# MTN Cameroun
-# MTN_SMS_API_KEY=
+```bash
+# Développement (avec nodemon)
+npm run dev
 
-# Nexah
-# NEXAH_USER=
-# NEXAH_PASSWORD=
+# Production
+npm start
+```
 
-# Twilio
-# TWILIO_ACCOUNT_SID=
-# TWILIO_AUTH_TOKEN=
-# TWILIO_PHONE_NUMBER=
+➡️ API disponible sur **http://localhost:4000/api**
+
+---
+
+## 📜 Scripts npm
+
+| Commande | Description |
+|---|---|
+| `npm run dev` | Serveur de développement (nodemon) |
+| `npm start` | Serveur de production |
+| `npm run seed` | Peupler la base avec des données de test |
+| `npm run sync` | Synchroniser local → TiDB Cloud |
+| `npm test` | Tests (à venir) |
+
+---
+
+## 📁 Structure du projet
+
+```
+src/
+├── config/                    # Configuration
+│   ├── db.js                  # Pool MySQL + transactions
+│   └── logger.js              # Winston logger
+├── middlewares/               # Middlewares Express
+│   ├── auth.middleware.js     # authenticate, authorize
+│   ├── errorHandler.js        # Gestion centralisée des erreurs
+│   ├── rateLimiter.js         # Rate limiting (login, API)
+│   └── validate.js            # Validation express-validator
+├── modules/                   # Modules métier (feature-based)
+│   ├── auth/                  # Authentification
+│   │   ├── auth.controller.js
+│   │   ├── auth.repository.js
+│   │   ├── auth.routes.js
+│   │   └── auth.service.js
+│   ├── donneurs/              # Gestion des donneurs
+│   ├── personnels/            # Gestion du personnel
+│   ├── etablissements/        # Établissements (banques + hôpitaux)
+│   ├── dons/                  # Enregistrement des dons
+│   ├── poches/                # Poches de sang
+│   ├── stock/                 # Stocks par établissement
+│   ├── demandes/              # Demandes inter-établissements
+│   ├── rdv/                   # Rendez-vous
+│   ├── notifications/         # Notifications
+│   ├── statistiques/          # Statistiques
+│   ├── rapports/              # Rapports
+│   ├── journal-audit/         # Journal d'audit
+│   ├── rattachements/         # Rattachements donneur ↔ établissement
+│   ├── sollicitations/        # Sollicitations donneurs
+│   ├── evaluations-ia/        # Pré-évaluation IA
+│   └── registres/             # Registres papier
+├── services/                  # Services externes
+│   ├── emailService.js        # Envoi email (Brevo, SMTP, mock)
+│   └── smsService.js          # Envoi SMS (Orange, mock)
+├── scripts/                   # Scripts utilitaires
+│   ├── seed.js                # Données de test
+│   ├── sync-vers-tidb.js      # Sync local → TiDB
+│   └── ...
+├── utils/                     # Utilitaires
+│   ├── AppError.js            # Classe d'erreur opérationnelle
+│   ├── asyncHandler.js        # Wrapper try/catch
+│   ├── generateCode.js        # Génération de codes d'activation
+│   └── response.js            # Format de réponse standard
+├── app.js                     # Configuration Express
+└── server.js                  # Point d'entrée
 ```
 
 ---
 
-## 🚀 Comment utiliser
+## 🔐 Authentification
 
-1. **Créez** `README.md` à la racine du backend
-2. **Copiez** le premier bloc de code
-3. **Créez** `.env.example` à la racine du backend
-4. **Copiez** le second bloc de code
-5. **Sauvegardez**
+### Format du token JWT
+
+```json
+{
+  "id": 1,
+  "role": "ADMINISTRATEUR",
+  "iat": 1790327434,
+  "exp": 1790932234
+}
+```
+
+### Utilisation
+
+```http
+Authorization: Bearer <token>
+```
+
+### Rôles disponibles
+
+| Rôle | Code |
+|---|---|
+| Administrateur | `ADMINISTRATEUR` |
+| Personnel de banque | `PERSONNEL_BANQUE` |
+| Personnel d'hôpital | `PERSONNEL_HOPITAL` |
+| Donneur | `DONNEUR` |
+
+---
+
+## 📡 Endpoints principaux
+
+### 🔓 Routes publiques
+
+| Méthode | Route | Description |
+|---|---|---|
+| `POST` | `/api/auth/login` | Connexion |
+| `POST` | `/api/auth/inscription-donneur` | Inscription donneur |
+| `POST` | `/api/auth/activation` | Activation par code |
+| `POST` | `/api/auth/renvoyer-activation` | Renvoyer le code |
+| `POST` | `/api/auth/mot-de-passe-oublie` | Demander réinitialisation |
+| `POST` | `/api/auth/reinitialiser-mot-de-passe` | Réinitialiser |
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/statistiques/publiques` | Stats publiques (landing) |
+
+### 🔒 Routes protégées
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| `GET` | `/api/donneurs/moi` | Donneur |
+| `PUT` | `/api/donneurs/moi` | Donneur |
+| `PATCH` | `/api/donneurs/moi/disponibilite` | Donneur |
+| `GET` | `/api/etablissements` | Tous |
+| `POST` | `/api/etablissements` | Public (inscription) |
+| `PUT` | `/api/etablissements/:id` | Admin |
+| `GET` | `/api/poches` | Banque/Hôpital |
+| `GET` | `/api/stocks` | Banque |
+| `GET` | `/api/demandes` | Banque/Hôpital |
+| `POST` | `/api/demandes` | Hôpital |
+| `GET` | `/api/notifications` | Tous |
+| `GET` | `/api/personnels` | Admin |
+| `POST` | `/api/personnels` | Admin |
+| `GET` | `/api/statistiques/globales` | Admin |
+| `GET` | `/api/statistiques/publiques` | Public |
+
+---
+
+## 🗄️ Base de données
+
+### Tables principales (20 tables)
+
+```
+utilisateurs          → Table centrale (héritage)
+├── donneurs          → Profil donneur
+├── personnels        → Profil personnel
+└── administrateurs   → Profil admin
+
+etablissements        → Banques + Hôpitaux
+├── stocks            → Stocks par groupe sanguin
+├── poches            → Poches de sang
+├── demandes_sang     → Demandes inter-établissements
+└── rattachements_donneurs → Donneur ↔ Établissement
+
+dons                  → Dons enregistrés
+rdv                   → Rendez-vous
+notifications         → Notifications utilisateur
+journal_audit         → Journal d'audit
+activations_compte    → Codes d'activation
+traces_email          → Traces d'envoi email
+```
+
+### Schéma complet
+
+Voir `schema.sql` à la racine du projet.
+
+---
+
+## 📧 Envoi d'emails (Brevo)
+
+### Configuration
+
+```env
+EMAIL_PROVIDER=brevo
+EMAIL_ACTIF=true
+EMAIL_FROM_NAME=Aidora
+EMAIL_FROM_EMAIL=noreply@aidora.cm
+BREVO_API_KEY=xkeysib-xxxxx
+```
+
+### Templates disponibles
+
+- `envoyerCodeActivationDonneur` — Code d'activation
+- `envoyerInvitationRegistre` — Invitation (registre papier)
+- `envoyerConfirmationRdv` — Confirmation RDV
+- `envoyerBienvenueDonneur` — Bienvenue après activation
+- `envoyerCodeReinitialisation` — Réinitialisation MDP
+- `envoyerIdentifiantsPersonnel` — Identifiants personnel
+
+### Modes supportés
+
+- `mock` → Log dans la console (dev)
+- `brevo` → API HTTP Brevo (recommandé prod)
+- `gmail` / `smtp` / `sendgrid` → SMTP
+
+---
+
+## 📱 Envoi de SMS
+
+### Mode actuel : **mock** (console)
+
+```env
+SMS_PROVIDER=mock
+SMS_ACTIF=true
+```
+
+Les SMS sont **logués** dans la console, pas envoyés réellement.
+
+### Providers supportés (à venir)
+
+- `orange` — Orange SMS Cameroun
+- `mtn` — MTN Cameroun
+- `nexah` — Nexah
+- `twilio` — Twilio
+
+---
+
+## 🛡️ Sécurité
+
+| Mesure | Détail |
+|---|---|
+| **JWT** | Tokens signés avec `JWT_SECRET` |
+| **Bcrypt** | Hashage des mots de passe (12 rounds) |
+| **Helmet** | Sécurité HTTP headers |
+| **CORS** | Origines whitelistées |
+| **Rate Limiting** | 3000 req/15min, 10 tentatives login/15min |
+| **Validation** | express-validator sur toutes les entrées |
+| **Error handling** | Pas de fuite d'info en production |
+| **Audit** | Journal d'audit pour les actions sensibles |
+
+---
+
+## 🚀 Déploiement
+
+### Backend — Render
+
+| Environnement | URL |
+|---|---|
+| **Production** | https://aidora-backend-voj6.onrender.com |
+| **Health check** | https://aidora-backend-voj6.onrender.com/api/health |
+
+### Variables d'environnement (Render)
+
+```env
+NODE_ENV=production
+PORT=10000
+
+DB_HOST=gateway01.xxx.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=xxxxx.root
+DB_PASSWORD=xxx
+DB_NAME=aidora
+TIDB_ENABLE_SSL=true
+TIDB_CA_PEM=-----BEGIN CERTIFICATE-----...
+
+JWT_SECRET=xxx
+JWT_EXPIRES_IN=7d
+
+EMAIL_PROVIDER=brevo
+BREVO_API_KEY=xkeysib-xxx
+EMAIL_FROM_NAME=Aidora
+EMAIL_FROM_EMAIL=noreply@aidora.cm
+
+SMS_PROVIDER=mock
+SMS_ACTIF=true
+
+FRONTEND_URL=https://aidora-health.vercel.app
+```
+
+### Déployer
+
+```bash
+git add .
+git commit -m "feat: nouvelle fonctionnalité"
+git push origin main
+```
+
+→ Render redéploie automatiquement en ~1 minute.
+
+---
+
+## 🌱 Scripts utilitaires
+
+### `seed.js` — Peupler la base de test
+
+```bash
+node src/scripts/seed.js
+```
+
+Insère :
+- 1 admin
+- 6 personnels (3 banques + 3 hôpitaux)
+- 30 donneurs
+- 60 dons
+- ~90 poches
+- 20 RDV
+- 15 demandes
+
+### `sync-vers-tidb.js` — Sync local → TiDB
+
+```bash
+node src/scripts/sync-vers-tidb.js
+```
+
+Copie **toutes** les tables du MySQL local vers TiDB Cloud.
+
+---
+
+## 🔑 Comptes de test
+
+> **⚠️ Ces comptes sont fournis pour le développement et les démos. À supprimer avant la mise en production réelle.**
+
+### Mot de passe commun : `Test1234!`
+
+| Rôle | Email | Mot de passe |
+|---|---|---|
+| **ADMINISTRATEUR** | `admin@aidora.cm` | `Test1234!` |
+| **PERSONNEL_BANQUE** | `paul.kamga@aidora.cm` | `Test1234!` |
+| **PERSONNEL_BANQUE** | `sarah.nkemi@aidora.cm` | `Test1234!` |
+| **PERSONNEL_BANQUE** | `eric.tchoua@aidora.cm` | `Test1234!` |
+| **PERSONNEL_HOPITAL** | `jean.fotso@aidora.cm` | `Test1234!` |
+| **PERSONNEL_HOPITAL** | `marie.tabi@aidora.cm` | `Test1234!` |
+| **PERSONNEL_HOPITAL** | `andre.mballa@aidora.cm` | `Test1234!` |
+| **DONNEUR** | `jean.mbarga0@test.cm` | `Test1234!` |
+| **DONNEUR** | `marie.ngo1@test.cm` | `Test1234!` |
+| **DONNEUR** | `paul.fonkou2@test.cm` | `Test1234!` |
+
+**30 donneurs supplémentaires** : voir `src/scripts/seed.js`.
+
+---
+
+## 🧪 Tests avec curl
+
+### Health check
+
+```bash
+curl http://localhost:4000/api/health
+```
+
+### Login
+
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"identifiant":"admin@aidora.cm","motDePasse":"Test1234!"}'
+```
+
+### Requête authentifiée
+
+```bash
+curl http://localhost:4000/api/donneurs/moi \
+  -H "Authorization: Bearer <token>"
+```
+
+### Stats publiques
+
+```bash
+curl http://localhost:4000/api/statistiques/publiques
+```
+
+---
+
+## 📝 Conventions de code
+
+- **Modules** : 1 dossier par feature avec 4 fichiers
+  - `*.controller.js` — Reçoit la requête HTTP
+  - `*.service.js` — Logique métier
+  - `*.repository.js` — Accès base de données
+  - `*.routes.js` — Définition des routes
+- **Erreurs** : toujours `AppError` (jamais `Error`)
+- **Réponses** : via `success(res, data, message)`
+- **Async** : wrapper avec `asyncHandler`
+- **Validation** : `express-validator` + middleware `validate`
+- **Logs** : `logger.info/warn/error` (jamais `console.log`)
+
+---
+
+## 🐛 Résolution de problèmes
+
+### Erreur `Access denied for user`
+
+Vérifier les identifiants dans `.env`.
+
+### Erreur `Connections using insecure transport are prohibited`
+
+Ajouter dans `.env` :
+
+```env
+TIDB_ENABLE_SSL=true
+TIDB_CA_PEM=-----BEGIN CERTIFICATE-----...
+```
+
+### Erreur `Cannot find module 'X'`
+
+Réinstaller :
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Le serveur crash au démarrage
+
+Vérifier les logs et que MySQL/TiDB est accessible.
+
+---
+
+## 📄 Licence
+
+Projet académique — **Aidora © 2026**
+
+Tous droits réservés.
+
+---
+
+## 👥 Auteurs
+
+- **Souleymane Laminou** — Développeur Full-Stack
+- **Encadreur académique** — [Nom à compléter]
+- **Encadreur professionnel** — [Nom à compléter]
+
+---
+
+## 📞 Contact
+
+- 📧 Email : `contact@aidora.cm`
+- 🌐 Frontend : https://aidora-health.vercel.app
+- 🔌 API : https://aidora-backend-voj6.onrender.com
+
+---
+
+## 🙏 Remerciements
+
+- L'équipe **Express** pour le framework
+- **TiDB Cloud** pour la base MySQL serverless
+- **Render** pour l'hébergement gratuit
+- **Brevo** pour l'envoi d'emails transactionnels
+- **Nodemailer** pour la compatibilité SMTP
+
+---
+
+<p align="center">
+  <strong>🩸 Aidora — Chaque goutte sauve une vie.</strong>
+</p>
+```
+
