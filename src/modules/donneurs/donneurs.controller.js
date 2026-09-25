@@ -19,7 +19,7 @@ const activer = asyncHandler(async (req, res) => {
 
 const listerTous = asyncHandler(async (req, res) => {
   const seulementGeo = req.query.geo === "true";
-  const result = await service.listerTous(seulementGeo);
+  const result = await donneurService.listerTous(seulementGeo);
   return success(res, result);
 });
 
