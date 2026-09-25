@@ -1,45 +1,50 @@
 // ============================================================
 // AIDORA — Synchronisation LOCAL → TiDB Cloud
 // ------------------------------------------------------------
-// Copie TOUTES les tables et données de ton MySQL local
-// vers ton cluster TiDB Cloud.
+// Copie TOUTES les tables et données de MySQL local vers TiDB.
 //
 // ⚠️  À lancer UNE SEULE FOIS (écrase les données TiDB)
 //
-// Usage : node scripts/sync-vers-tidb.js
+// Usage : node src/scripts/sync-vers-tidb.js
 // ============================================================
 
 require("dotenv").config();
 const mysql = require("mysql2/promise");
-const fs = require("fs");
 
 // ============================================
-// CONFIGURATION
+// CONFIG SOURCE : ton MySQL local
 // ============================================
-
-// --- Source : LOCAL ---
 const SOURCE = {
   host: "127.0.0.1",
   port: 3306,
   user: "root",
-  password: "",        // ← ton mot de passe MySQL local
+  password: "",        // ← 🎯 ton mot de passe MySQL local (souvent vide avec XAMPP/WAMP)
   database: "aidora",
 };
 
-// --- Cible : TIDB CLOUD ---
+// ============================================
+// CONFIG CIBLE : TiDB Cloud (depuis .env)
+// ============================================
+function buildSSL() {
+  if (process.env.TIDB_ENABLE_SSL !== "true") return undefined;
+  return {
+    minVersion: "TLSv1.2",
+    rejectUnauthorized: false,   // tolérant pour éviter les erreurs de certificat
+  };
+}
+
 const CIBLE = {
-  host: process.env.DB_HOST,          // depuis .env
+  host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT),
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: {
-    ca: fs.readFileSync("./certs/tidb-ca.pem"),
-    rejectUnauthorized: true,
-  },
+  ssl: buildSSL(),
 };
 
-// Ordre de copie (à cause des clés étrangères)
+// ============================================
+// ORDRE DES TABLES (respecte les FK)
+// ============================================
 const TABLES = [
   "utilisateurs",
   "etablissements",
@@ -65,6 +70,7 @@ const TABLES = [
   "rattachements_donneurs",
   "invitations_donneurs",
   "traces_email",
+  "traces_sms",
 ];
 
 // ============================================
@@ -79,43 +85,42 @@ async function sync() {
     console.log("   ✅ Connecté\n");
 
     console.log("🔌 Connexion à TiDB Cloud...");
+    console.log(`   Host : ${CIBLE.host}`);
+    console.log(`   DB   : ${CIBLE.database}`);
     dstConn = await mysql.createConnection(CIBLE);
     console.log("   ✅ Connecté\n");
 
     console.log("🚫 Désactivation des FK sur TiDB...");
     await dstConn.query("SET FOREIGN_KEY_CHECKS = 0");
 
-    console.log("🧹 Nettoyage de TiDB...");
-    // Vider dans l'ordre inverse
+    console.log("\n🧹 Nettoyage de TiDB...");
     for (const table of [...TABLES].reverse()) {
       try {
         await dstConn.query(`DELETE FROM ${table}`);
         console.log(`   ✅ ${table} vidée`);
       } catch (err) {
         if (err.code !== "ER_NO_SUCH_TABLE") {
-          console.log(`   ⚠️ ${table} : ${err.message}`);
+          console.log(`   ⚠️  ${table} : ${err.message}`);
         }
       }
     }
-    console.log("");
 
-    console.log("📤 Copie des données...\n");
+    console.log("\n📤 Copie des données...\n");
+    let totalLignes = 0;
     for (const table of TABLES) {
       try {
-        // Lire depuis local
         const [rows] = await srcConn.query(`SELECT * FROM ${table}`);
 
         if (rows.length === 0) {
-          console.log(`   ⏭️  ${table} : 0 ligne`);
+          console.log(`   ⏭️  ${table.padEnd(30)} : 0 ligne`);
           continue;
         }
 
-        // Construire la requête INSERT
         const colonnes = Object.keys(rows[0]);
         const placeholders = `(${colonnes.map(() => "?").join(", ")})`;
         const values = rows.map((r) => colonnes.map((c) => r[c]));
 
-        // Insérer par batch de 100
+        // Insertion par batch de 100
         const BATCH = 100;
         for (let i = 0; i < values.length; i += BATCH) {
           const batch = values.slice(i, i + BATCH);
@@ -125,16 +130,17 @@ async function sync() {
           await dstConn.query(sql, batch.flat());
         }
 
-        console.log(`   ✅ ${table} : ${rows.length} lignes copiées`);
+        totalLignes += rows.length;
+        console.log(`   ✅ ${table.padEnd(30)} : ${rows.length} lignes`);
       } catch (err) {
-        console.log(`   ❌ ${table} : ${err.message}`);
+        console.log(`   ❌ ${table.padEnd(30)} : ${err.message}`);
       }
     }
 
     console.log("\n✅ Réactivation des FK sur TiDB...");
     await dstConn.query("SET FOREIGN_KEY_CHECKS = 1");
 
-    console.log("\n🎉 Synchronisation terminée !\n");
+    console.log(`\n🎉 Synchronisation terminée : ${totalLignes} lignes copiées !\n`);
   } catch (err) {
     console.error("❌ Erreur :", err.message);
     process.exit(1);
