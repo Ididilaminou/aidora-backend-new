@@ -1,15 +1,23 @@
-// Erreur métier avec un status HTTP explicite, à lever partout au lieu de `new Error(...)`
+// ============================================
+// AIDORA - CLASSE AppError
+// ============================================
+
 class AppError extends Error {
-  constructor(message, status = 400, code = undefined, details = undefined) {
+  /**
+   * @param {string} message
+   * @param {number} statusCode
+   * @param {string} code
+   * @param {any} details
+   */
+  constructor(message, statusCode = 500, code = "ERREUR_INTERNE", details = null) {
     super(message);
-    this.status = status;
-    this.code = code; // code métier optionnel (ex: "DONNEUR_DEJA_EXISTANT")
-    this.details = details; // ex: liste des champs invalides
-    this.isOperational = true; // distingue une erreur métier attendue d'un bug
+    this.name = "AppError";
+    this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
+    this.isOperational = true;
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 module.exports = AppError;
-
-
