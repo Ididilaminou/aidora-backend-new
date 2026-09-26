@@ -6,7 +6,7 @@ const logger = require("../../config/logger");
 const { generateActivationCode } = require("../../utils/generateCode");
 const journalAudit = require("../journal-audit/journalAudit.service");
 const notificationService = require("../notifications/notifications.service");
-const emailService = require("../../services/emailService");
+const emailService = require("../../services/email.service");
 
 const BCRYPT_ROUNDS = 12;
 

@@ -9,10 +9,6 @@ const AppError = require("../../utils/AppError");
 // LECTURE UTILISATEUR
 // ============================================
 
-/**
- * Recherche un utilisateur par email OU téléphone (login).
- * ⚠️ Inclut le mot de passe (nécessaire pour la vérification bcrypt).
- */
 async function findUtilisateurByIdentifiant(identifiant) {
   const [rows] = await pool.query(
     `SELECT id, nom, prenom, email, telephone, mot_de_passe, role, statut_compte,
@@ -25,9 +21,6 @@ async function findUtilisateurByIdentifiant(identifiant) {
   return rows[0] || null;
 }
 
-/**
- * Recherche un utilisateur par email (sans mot de passe).
- */
 async function findUtilisateurByEmail(email) {
   const [rows] = await pool.query(
     `SELECT id, nom, prenom, email, telephone, role, statut_compte,
@@ -40,9 +33,6 @@ async function findUtilisateurByEmail(email) {
   return rows[0] || null;
 }
 
-/**
- * Recherche un utilisateur par téléphone (sans mot de passe).
- */
 async function findUtilisateurByTelephone(telephone) {
   const [rows] = await pool.query(
     `SELECT id, nom, prenom, email, telephone, role, statut_compte,
@@ -55,10 +45,6 @@ async function findUtilisateurByTelephone(telephone) {
   return rows[0] || null;
 }
 
-/**
- * Recherche un utilisateur par ID.
- * Inclut mot_de_passe uniquement pour les opérations internes (changement MDP).
- */
 async function findUtilisateurById(id) {
   const [rows] = await pool.query(
     `SELECT id, nom, prenom, email, telephone, mot_de_passe, role, statut_compte,
@@ -71,10 +57,6 @@ async function findUtilisateurById(id) {
   return rows[0] || null;
 }
 
-/**
- * Recherche un utilisateur par email OU téléphone (vérification d'unicité).
- * Retourne juste l'id + le champ en conflit.
- */
 async function findUtilisateurParEmailOuTelephone(email, telephone) {
   const [rows] = await pool.query(
     `SELECT id, email, telephone
@@ -87,32 +69,20 @@ async function findUtilisateurParEmailOuTelephone(email, telephone) {
 }
 
 // ============================================
-// EXTRAS (spécifiques au rôle)
+// EXTRAS RÔLE
 // ============================================
 
 async function getDonneurExtras(id) {
   const [rows] = await pool.query(
     `SELECT 
-        d.groupe_sanguin, 
-        d.rhesus, 
-        d.disponible,
-        d.ville, 
-        d.quartier, 
-        d.latitude, 
-        d.longitude,
+        d.groupe_sanguin, d.rhesus, d.disponible,
+        d.ville, d.quartier, d.latitude, d.longitude,
         COALESCE(
-          (SELECT r.etablissement_id 
-           FROM rattachements_donneurs r 
-           WHERE r.donneur_id = d.id 
-             AND r.statut = 'ACTIF' 
-             AND r.est_principal = 1 
-           LIMIT 1),
-          (SELECT r.etablissement_id 
-           FROM rattachements_donneurs r 
-           WHERE r.donneur_id = d.id 
-             AND r.statut = 'ACTIF' 
-           ORDER BY r.date_rattachement DESC 
-           LIMIT 1),
+          (SELECT r.etablissement_id FROM rattachements_donneurs r
+           WHERE r.donneur_id = d.id AND r.statut = 'ACTIF' AND r.est_principal = 1 LIMIT 1),
+          (SELECT r.etablissement_id FROM rattachements_donneurs r
+           WHERE r.donneur_id = d.id AND r.statut = 'ACTIF'
+           ORDER BY r.date_rattachement DESC LIMIT 1),
           d.etablissement_id
         ) AS etablissement_id
      FROM donneurs d
@@ -124,11 +94,8 @@ async function getDonneurExtras(id) {
 
 async function getPersonnelExtras(id) {
   const [rows] = await pool.query(
-    `SELECT 
-        p.fonction, 
-        p.etablissement_id,
-        e.nom AS etablissement_nom,
-        e.type AS etablissement_type
+    `SELECT p.fonction, p.etablissement_id,
+            e.nom AS etablissement_nom, e.type AS etablissement_type
      FROM personnels p
      LEFT JOIN etablissements e ON e.id = p.etablissement_id
      WHERE p.id = ?`,
@@ -138,28 +105,14 @@ async function getPersonnelExtras(id) {
 }
 
 // ============================================
-// INSCRIPTION PUBLIQUE D'UN DONNEUR
+// INSCRIPTION
 // ============================================
 
-/**
- * Crée un compte donneur via inscription publique (transaction).
- *
- * Étapes :
- *   1. Vérifier unicité email/téléphone
- *   2. Insérer dans utilisateurs
- *   3. Insérer dans donneurs (avec géoloc optionnelle)
- *   4. Générer et insérer le code d'activation
- *
- * @returns {{ utilisateurId, codeActivation, dateExpiration }}
- */
 async function creerDonneurInscription(data) {
   return withTransaction(async (conn) => {
-    // 1. Vérifier l'unicité
     const [existants] = await conn.query(
-      `SELECT id, email, telephone
-       FROM utilisateurs
-       WHERE email = ? OR telephone = ?
-       LIMIT 1`,
+      `SELECT id, email, telephone FROM utilisateurs
+       WHERE email = ? OR telephone = ? LIMIT 1`,
       [data.email, data.telephone]
     );
 
@@ -173,34 +126,23 @@ async function creerDonneurInscription(data) {
       );
     }
 
-    // 2. Créer l'utilisateur (statut INACTIF par défaut)
     const [userResult] = await conn.query(
       `INSERT INTO utilisateurs
         (nom, prenom, email, telephone, mot_de_passe, role, statut_compte)
        VALUES (?, ?, ?, ?, ?, 'DONNEUR', 'INACTIF')`,
-      [
-        data.nom,
-        data.prenom,
-        data.email,
-        data.telephone,
-        data.motDePasseHash,
-      ]
+      [data.nom, data.prenom, data.email, data.telephone, data.motDePasseHash]
     );
 
     const utilisateurId = userResult.insertId;
 
-    // 3. Créer le profil donneur
     await conn.query(
       `INSERT INTO donneurs
-        (id, groupe_sanguin, rhesus, date_naissance, sexe,
-         disponible, latitude, longitude, ville, quartier, etablissement_id)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, NULL)`,
+        (id, groupe_sanguin, rhesus, disponible, latitude, longitude, ville, quartier, etablissement_id)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL)`,
       [
         utilisateurId,
         data.groupeSanguin,
         data.rhesus,
-        data.dateNaissance || null,
-        data.sexe || null,
         data.latitude || null,
         data.longitude || null,
         data.ville || null,
@@ -208,8 +150,7 @@ async function creerDonneurInscription(data) {
       ]
     );
 
-    // 4. Créer le code d'activation
-    const dateExpiration = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const dateExpiration = new Date(Date.now() + 15 * 60 * 1000);
     await conn.query(
       `INSERT INTO activations_compte
         (utilisateur_id, code, date_expiration, statut)
@@ -225,27 +166,16 @@ async function creerDonneurInscription(data) {
   });
 }
 
-/**
- * Crée un donneur (par la banque, via saisie manuelle).
- * Différent de l'inscription publique : statut ACTIF direct
- * + invitation envoyée.
- */
 async function creerDonneurParBanque(data) {
   return withTransaction(async (conn) => {
     const [existants] = await conn.query(
-      `SELECT id, email, telephone
-       FROM utilisateurs
-       WHERE email = ? OR telephone = ?
-       LIMIT 1`,
+      `SELECT id FROM utilisateurs
+       WHERE email = ? OR telephone = ? LIMIT 1`,
       [data.email, data.telephone]
     );
 
     if (existants.length > 0) {
-      throw new AppError(
-        "Un compte existe déjà avec ces informations",
-        409,
-        "UTILISATEUR_DEJA_EXISTANT"
-      );
+      throw new AppError("Compte déjà existant", 409, "UTILISATEUR_DEJA_EXISTANT");
     }
 
     const [userResult] = await conn.query(
@@ -258,13 +188,11 @@ async function creerDonneurParBanque(data) {
     const utilisateurId = userResult.insertId;
 
     await conn.query(
-      `INSERT INTO donneurs
-        (id, groupe_sanguin, rhesus, etablissement_id)
+      `INSERT INTO donneurs (id, groupe_sanguin, rhesus, etablissement_id)
        VALUES (?, ?, ?, ?)`,
       [utilisateurId, data.groupeSanguin, data.rhesus, data.etablissementId]
     );
 
-    // Rattachement automatique (source: REGISTRE_MANUEL)
     await conn.query(
       `INSERT INTO rattachements_donneurs
         (donneur_id, etablissement_id, statut, source)
@@ -272,7 +200,7 @@ async function creerDonneurParBanque(data) {
       [utilisateurId, data.etablissementId]
     );
 
-    const dateExpiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+    const dateExpiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await conn.query(
       `INSERT INTO activations_compte
         (utilisateur_id, code, date_expiration, statut)
@@ -285,12 +213,9 @@ async function creerDonneurParBanque(data) {
 }
 
 // ============================================
-// INVITATIONS (registre)
+// INVITATIONS
 // ============================================
 
-/**
- * Crée une invitation pour un donneur du registre papier.
- */
 async function creerInvitation(data) {
   const [result] = await pool.query(
     `INSERT INTO invitations_donneurs
@@ -314,9 +239,6 @@ async function creerInvitation(data) {
   return { invitationId: result.insertId };
 }
 
-/**
- * Recherche une invitation par code d'activation.
- */
 async function trouverInvitationParCode(code) {
   const [rows] = await pool.query(
     `SELECT i.*, e.nom AS etablissement_nom, e.type AS etablissement_type
@@ -331,21 +253,13 @@ async function trouverInvitationParCode(code) {
   return rows[0] || null;
 }
 
-/**
- * Marque une invitation comme acceptée ou refusée.
- */
 async function updateStatutInvitation(invitationId, statut) {
   await pool.query(
-    `UPDATE invitations_donneurs
-     SET statut = ?, date_reponse = NOW()
-     WHERE id = ?`,
+    `UPDATE invitations_donneurs SET statut = ?, date_reponse = NOW() WHERE id = ?`,
     [statut, invitationId]
   );
 }
 
-/**
- * Liste les invitations en attente d'un établissement.
- */
 async function listerInvitationsEnAttente(etablissementId) {
   const [rows] = await pool.query(
     `SELECT id, prenom, nom, email, telephone, groupe_sanguin, rhesus,
@@ -359,7 +273,7 @@ async function listerInvitationsEnAttente(etablissementId) {
 }
 
 // ============================================
-// ACTIVATION DE COMPTE
+// ACTIVATION
 // ============================================
 
 async function findActivationValide(utilisateurId, codeHash) {
@@ -393,8 +307,7 @@ async function activerCompteTransactionnel(utilisateurId, activationId) {
 async function remplacerActivation(utilisateurId, codeHash, dateExpiration) {
   return withTransaction(async (conn) => {
     await conn.query(
-      `UPDATE activations_compte
-       SET statut = 'EXPIRE'
+      `UPDATE activations_compte SET statut = 'EXPIRE'
        WHERE utilisateur_id = ? AND statut = 'EN_ATTENTE'`,
       [utilisateurId]
     );
@@ -453,34 +366,23 @@ async function creerRattachementInitial(donneurId, etablissementId, source = "IN
 // ============================================
 
 module.exports = {
-  // Lecture
   findUtilisateurByIdentifiant,
   findUtilisateurByEmail,
   findUtilisateurByTelephone,
   findUtilisateurById,
   findUtilisateurParEmailOuTelephone,
-
-  // Extras rôle
   getDonneurExtras,
   getPersonnelExtras,
-
-  // Inscription
   creerDonneurInscription,
   creerDonneurParBanque,
-
-  // Invitations
   creerInvitation,
   trouverInvitationParCode,
   updateStatutInvitation,
   listerInvitationsEnAttente,
-
-  // Activation
   findActivationValide,
   activerCompteTransactionnel,
   remplacerActivation,
   creerRattachementInitial,
-
-  // Mot de passe
   changerMotDePasseTransactionnel,
   updateMotDePasse,
 };

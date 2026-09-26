@@ -5,7 +5,7 @@ const AppError = require("../../utils/AppError");
 const logger = require("../../config/logger");
 const journalAudit = require("../journal-audit/journalAudit.service");
 const notificationService = require("../notifications/notifications.service");
-const emailService = require("../../services/emailService");
+const emailService = require("../../services/email.service");
 const smsService = require("../../services/smsService");
 
 // ============================================

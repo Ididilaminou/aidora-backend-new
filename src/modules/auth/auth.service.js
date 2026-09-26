@@ -3,399 +3,273 @@
 // ============================================
 
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const authRepository = require("./auth.repository");
-const AppError = require("../../utils/AppError");
+const jwt = require("jsonwebtoken");
+
+const repo = require("./auth.repository");
+const emailService = require("../../services/email.service");
 const logger = require("../../config/logger");
-const journalAudit = require("../journal-audit/journalAudit.service");
-const notificationService = require("../notifications/notifications.service");
-const emailService = require("../../services/emailService");
-const smsService = require("../../services/smsService");
-require("dotenv").config();
+const AppError = require("../../utils/AppError");
 
-// ============================================
-// CONSTANTES
-// ============================================
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
-const IDENTIFIANTS_INCORRECTS = "Identifiant ou mot de passe incorrect";
-
-// Hash bcrypt valide (coût 10) pour comparaison à temps constant si l'utilisateur n'existe pas
-const HASH_FACTICE =
-  "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-
-const BCRYPT_ROUNDS = 12;
-const DUREE_CODE_ACTIVATION_MIN = 15;   // 15 minutes
-const DUREE_CODE_INVITATION_JOURS = 7;  // 7 jours
-
-// ============================================
-// UTILITAIRES
-// ============================================
-
-function signToken(payload) {
-  return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-  });
+if (!JWT_SECRET) {
+  logger.error("[AUTH] ⚠️ JWT_SECRET manquant dans .env — la connexion plantera !");
 }
+
+// ============================================
+// HELPERS
+// ============================================
 
 function genererCodeActivation() {
-  const caracteres = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += caracteres[crypto.randomInt(0, caracteres.length)];
-  }
-  return `AID-${code}`;
+  const aleatoire = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `AID-${aleatoire}`;
 }
 
-function hashCode(code) {
+function hasherCode(code) {
   return crypto.createHash("sha256").update(code).digest("hex");
 }
 
-function calculerExpiration(minutes = DUREE_CODE_ACTIVATION_MIN) {
-  return new Date(Date.now() + minutes * 60 * 1000);
-}
-
-function calculerExpirationJours(jours) {
-  return new Date(Date.now() + jours * 24 * 60 * 60 * 1000);
-}
-
 /**
- * Envoie un code d'activation par email ET/OU SMS (selon les infos fournies).
- * Ne bloque jamais l'inscription si l'envoi échoue.
+ * Normalise un utilisateur pour le frontend.
+ * Format attendu par le type Utilisateur (snake_case + id + role).
  */
-async function envoyerCodeMultiCanal({
-  utilisateurId,
-  prenom,
-  email,
-  telephone,
-  code,
-  type = "ACTIVATION", // ACTIVATION | INVITATION | REINITIALISATION
-}) {
-  const envois = [];
-
-  // Email
-  if (email) {
-    let promesse;
-    if (type === "ACTIVATION") {
-      promesse = emailService.envoyerCodeActivationDonneur({
-        destinataire: email,
-        prenom,
-        code,
-        utilisateurId,
-      });
-    } else if (type === "REINITIALISATION") {
-      promesse = emailService.envoyerCodeReinitialisation({
-        destinataire: email,
-        prenom,
-        code,
-        utilisateurId,
-      });
-    }
-    if (promesse) envois.push(promesse.catch((e) => ({ succes: false, erreur: e.message })));
-  }
-
-  // SMS
-  if (telephone) {
-    envois.push(
-      smsService.envoyerCodeActivation(telephone, prenom, code, utilisateurId)
-        .catch((e) => ({ succes: false, erreur: e.message }))
-    );
-  }
-
-  if (envois.length === 0) {
-    logger.warn(`[Auth] Aucun canal d'envoi disponible pour #${utilisateurId}`);
-    return { envoye: false };
-  }
-
-  const resultats = await Promise.all(envois);
-  const succes = resultats.some((r) => r.succes);
-
-  return { envoye: succes, resultats };
-}
-
-// ============================================
-// CONNEXION
-// ============================================
-
-async function login(identifiant, motDePasse, adresseIp = null) {
-  const utilisateur = await authRepository.findUtilisateurByIdentifiant(identifiant);
-
-  if (!utilisateur) {
-    await bcrypt.compare(motDePasse, HASH_FACTICE);
-    throw new AppError(IDENTIFIANTS_INCORRECTS, 401, "AUTH_FAILED");
-  }
-
-  if (utilisateur.statut_compte !== "ACTIF") {
-    throw new AppError("Compte non activé ou suspendu", 403, "COMPTE_INACTIF");
-  }
-
-  const valide = await bcrypt.compare(motDePasse, utilisateur.mot_de_passe);
-  if (!valide) {
-    await journalAudit.enregistrer({
-      utilisateur_id: utilisateur.id,
-      action: "CONNEXION_ECHOUEE",
-      nouvelle_valeur: { identifiant, raison: "MOT_DE_PASSE_INCORRECT" },
-      adresse_ip: adresseIp,
-    });
-    throw new AppError(IDENTIFIANTS_INCORRECTS, 401, "AUTH_FAILED");
-  }
-
-  const payload = { id: utilisateur.id, role: utilisateur.role };
-  let extras = {};
-
-  if (utilisateur.role === "DONNEUR") {
-    extras = (await authRepository.getDonneurExtras(utilisateur.id)) || {};
-  } else if (
-    utilisateur.role === "PERSONNEL_BANQUE" ||
-    utilisateur.role === "PERSONNEL_HOPITAL"
-  ) {
-    extras = (await authRepository.getPersonnelExtras(utilisateur.id)) || {};
-    payload.etablissementId = extras.etablissement_id;
-  }
-
-  const token = signToken(payload);
-
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateur.id,
-    action: "CONNEXION",
-    nouvelle_valeur: {
-      role: utilisateur.role,
-      etablissement_id: extras.etablissement_id || null,
-    },
-    adresse_ip: adresseIp,
-  });
-
-  logger.info(`Connexion réussie : #${utilisateur.id} (${utilisateur.role})`);
-
+function normaliserUtilisateur(u, extras = null) {
+  if (!u) return null;
   return {
-    token,
-    user: {
-      id: utilisateur.id,
-      nom: utilisateur.nom,
-      prenom: utilisateur.prenom,
-      role: utilisateur.role,
-      ...extras,
-    },
+    id: u.id,
+    nom: u.nom,
+    prenom: u.prenom,
+    email: u.email,
+    telephone: u.telephone,
+    role: u.role,
+    statut_compte: u.statut_compte,
+    doit_changer_mot_de_passe: u.doit_changer_mot_de_passe === 1,
+    etablissement_id: extras?.etablissement_id ?? null,
+    ...(extras || {}),
   };
 }
 
 // ============================================
-// DÉCONNEXION
+// LOGIN
 // ============================================
 
-async function logout(utilisateurId, adresseIp = null) {
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateurId,
-    action: "DECONNEXION",
-    adresse_ip: adresseIp,
-  });
+async function login(identifiant, motDePasse, ip = null) {
+  if (!identifiant || !motDePasse) {
+    throw new AppError("Identifiant et mot de passe obligatoires", 400, "CHAMPS_MANQUANTS");
+  }
+
+  const u = await repo.findUtilisateurByIdentifiant(identifiant);
+
+  if (!u || !(await bcrypt.compare(motDePasse, u.mot_de_passe))) {
+    throw new AppError("Identifiant ou mot de passe incorrect", 401, "IDENTIFIANTS_INCORRECTS");
+  }
+
+  if (u.statut_compte !== "ACTIF") {
+    throw new AppError(
+      "Votre compte n'est pas encore activé. Vérifiez votre email pour l'activer.",
+      403,
+      "COMPTE_INACTIF"
+    );
+  }
+
+  // Extras selon le rôle
+  let extras = null;
+  if (u.role === "DONNEUR") {
+    extras = await repo.getDonneurExtras(u.id);
+  } else if (u.role === "PERSONNEL_BANQUE" || u.role === "PERSONNEL_HOPITAL") {
+    extras = await repo.getPersonnelExtras(u.id);
+  }
+
+  const jeton = jwt.sign(
+    { id: u.id, identifiant: u.id, role: u.role },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+
+  // ✅ Format EXACT attendu par le frontend : { token, user }
+  return {
+    token: jeton,
+    user: normaliserUtilisateur(u, extras),
+  };
+}
+
+async function logout(userId, ip = null) {
   return { message: "Déconnexion réussie" };
 }
 
 // ============================================
-// INSCRIPTION PUBLIQUE D'UN DONNEUR
+// INSCRIPTION DONNEUR
 // ============================================
 
-/**
- * Inscription publique d'un visiteur.
- * Le donneur n'est PAS rattaché à une banque à l'inscription.
- * Il reçoit un code d'activation par email et/ou SMS.
- */
-async function inscrireDonneur(data, adresseIp = null) {
+async function inscrireDonneur(data, ip = null) {
   const {
-    nom,
-    prenom,
-    email,
-    telephone,
-    motDePasse,
-    groupeSanguin,
-    rhesus,
-    dateNaissance,
-    sexe,
-    latitude,
-    longitude,
-    ville,
-    quartier,
+    prenom, nom, email, telephone, motDePasse, groupeSanguin, rhesus,
+    ville, quartier, adresse, latitude, longitude,
   } = data;
 
-  // Validation minimale : téléphone obligatoire (contrainte DB)
-  if (!telephone) {
-    throw new AppError("Le téléphone est obligatoire", 400, "TELEPHONE_REQUIS");
+  // Validations
+  if (!prenom || !nom || !telephone || !motDePasse || !groupeSanguin || !rhesus) {
+    throw new AppError("Champs obligatoires manquants", 400, "CHAMPS_MANQUANTS");
   }
-  if (!email && !telephone) {
-    throw new AppError(
-      "Au moins un email ou un téléphone est requis",
-      400,
-      "CONTACT_REQUIS"
-    );
+  if (motDePasse.length < 8) {
+    throw new AppError("Le mot de passe doit contenir au moins 8 caractères", 400, "MDP_TROP_COURT");
+  }
+  if (!/[a-zA-Z]/.test(motDePasse) || !/\d/.test(motDePasse)) {
+    throw new AppError("Le mot de passe doit contenir au moins une lettre et un chiffre", 400, "MDP_FAIBLE");
+  }
+  if (!["A", "B", "AB", "O"].includes(groupeSanguin)) {
+    throw new AppError("Groupe sanguin invalide", 400, "GROUPE_INVALIDE");
+  }
+  if (!["POSITIF", "NEGATIF"].includes(rhesus)) {
+    throw new AppError("Rhésus invalide", 400, "RHESUS_INVALIDE");
   }
 
-  // Hash du mot de passe
-  const motDePasseHash = await bcrypt.hash(motDePasse, BCRYPT_ROUNDS);
+  const emailNormalise = email ? email.trim().toLowerCase() : null;
+  const telephoneNormalise = telephone.trim();
 
-  // Générer le code d'activation
+  const motDePasseHash = await bcrypt.hash(motDePasse, 12);
   const codeActivation = genererCodeActivation();
-  const codeHash = hashCode(codeActivation);
+  const codeHash = hasherCode(codeActivation);
 
-  // Créer le compte via transaction
-  const resultat = await authRepository.creerDonneurInscription({
-    nom,
-    prenom,
-    email: email || null,
-    telephone,
+  const result = await repo.creerDonneurInscription({
+    nom: nom.trim(),
+    prenom: prenom.trim(),
+    email: emailNormalise,
+    telephone: telephoneNormalise,
     motDePasseHash,
     groupeSanguin,
     rhesus,
-    dateNaissance,
-    sexe,
-    latitude,
-    longitude,
-    ville,
-    quartier,
-    codeActivation,
+    ville: ville || null,
+    quartier: quartier || null,
+    latitude: latitude || null,
+    longitude: longitude || null,
     codeHash,
+    codeActivation,
   });
 
-  // Audit
-  await journalAudit.enregistrer({
-    utilisateur_id: resultat.utilisateurId,
-    action: "INSCRIPTION_DONNEUR",
-    nouvelle_valeur: {
-      email: email || null,
-      telephone,
-      groupe_sanguin: groupeSanguin,
-      rhesus,
-    },
-    adresse_ip: adresseIp,
-  });
-
-  logger.info(`Inscription donneur #${resultat.utilisateurId} réussie`);
-
-  // Envoi du code (ne bloque jamais)
-  try {
-    await envoyerCodeMultiCanal({
-      utilisateurId: resultat.utilisateurId,
-      prenom,
-      email,
-      telephone,
-      code: codeActivation,
-      type: "ACTIVATION",
-    });
-  } catch (err) {
-    logger.error(`[Auth] Échec envoi code inscription : ${err.message}`);
+  // Email (non bloquant)
+  if (emailNormalise) {
+    emailService
+      .envoyerCodeActivationDonneur({
+        destinataire: emailNormalise,
+        prenom: prenom.trim(),
+        code: codeActivation,
+        telephone: telephoneNormalise,
+        utilisateurId: result.utilisateurId,
+      })
+      .catch((err) => logger.error(`[AUTH] Email activation : ${err.message}`));
   }
 
+  logger.info(
+    `[AUTH] Inscription donneur #${result.utilisateurId} (${emailNormalise || telephoneNormalise})`
+  );
+
   return {
-    utilisateurId: resultat.utilisateurId,
-    email: email || null,
-    telephone,
-    dateExpiration: resultat.dateExpiration,
-    message:
-      "Inscription réussie. Un code d'activation vous a été envoyé par email et/ou SMS.",
+    message: emailNormalise
+      ? "Inscription réussie. Un code d'activation vous a été envoyé par email."
+      : "Inscription réussie. Un code d'activation vous sera communiqué.",
+    utilisateur_id: result.utilisateurId,
+    utilisateurId: result.utilisateurId, // compat
+    email: emailNormalise,
+    telephone: telephoneNormalise,
+    codeActivation, // TEMPORAIRE — à retirer en prod
+    dateExpiration: result.dateExpiration,
   };
 }
 
 // ============================================
-// ACTIVATION DE COMPTE (email OU téléphone)
+// ACTIVATION
 // ============================================
 
-async function activerCompte({ courriel, telephone, code }, adresseIp = null) {
-  let utilisateur = null;
-  if (courriel) {
-    utilisateur = await authRepository.findUtilisateurByEmail(courriel);
-  } else if (telephone) {
-    utilisateur = await authRepository.findUtilisateurByTelephone(telephone);
+async function activerCompte(data, ip = null) {
+  // Accepte { identifiant, codeActivation } OU { courriel, telephone, codeActivation }
+  const identifiant = data.identifiant || data.courriel || data.email || data.telephone;
+  const codeActivation = data.codeActivation || data.code;
+
+  if (!identifiant || !codeActivation) {
+    throw new AppError("Identifiant et code d'activation obligatoires", 400, "CHAMPS_MANQUANTS");
   }
 
-  if (!utilisateur) {
-    throw new AppError("Code invalide ou expiré", 400, "CODE_INVALIDE");
+  const codeNormalise = codeActivation.trim().toUpperCase();
+  if (!/^AID-[A-Z0-9]{6}$/.test(codeNormalise)) {
+    throw new AppError("Le code doit respecter le format AID-XXXXXX", 400, "CODE_INVALIDE");
   }
 
-  if (utilisateur.statut_compte === "ACTIF") {
+  const u = await repo.findUtilisateurByIdentifiant(identifiant.trim());
+  if (!u) {
+    throw new AppError("Le code d'activation est invalide ou expiré", 400, "CODE_INVALIDE");
+  }
+
+  if (u.statut_compte === "ACTIF") {
     throw new AppError("Ce compte est déjà activé", 400, "DEJA_ACTIF");
   }
 
-  const codeHash = hashCode(code);
-  const activation = await authRepository.findActivationValide(
-    utilisateur.id,
-    codeHash
-  );
+  const codeHash = hasherCode(codeNormalise);
+  const activation = await repo.findActivationValide(u.id, codeHash);
 
   if (!activation) {
-    throw new AppError("Code invalide ou expiré", 400, "CODE_INVALIDE");
+    throw new AppError("Le code d'activation est invalide ou expiré", 400, "CODE_INVALIDE");
   }
 
-  await authRepository.activerCompteTransactionnel(
-    utilisateur.id,
-    activation.id
-  );
+  await repo.activerCompteTransactionnel(u.id, activation.id);
 
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateur.id,
-    action: "ACTIVATION_COMPTE",
-    nouvelle_valeur: { statut: "ACTIF" },
-    adresse_ip: adresseIp,
-  });
-
-  await notificationService.notifier(utilisateur.id, {
-    titre: "Compte activé",
-    message: "Votre compte Aidora est actif. Vous pouvez vous connecter.",
-    type: "SYSTEME",
-  });
-
-  if (utilisateur.email) {
+  // Email de bienvenue (non bloquant)
+  if (u.email) {
     emailService
       .envoyerBienvenueDonneur({
-        destinataire: utilisateur.email,
-        prenom: utilisateur.prenom,
-        utilisateurId: utilisateur.id,
+        destinataire: u.email,
+        prenom: u.prenom,
+        utilisateurId: u.id,
       })
-      .catch((e) => logger.error(`[Auth] Bienvenue email : ${e.message}`));
+      .catch(() => {});
   }
 
-  logger.info(`Compte #${utilisateur.id} activé`);
+  logger.info(`[AUTH] Compte #${u.id} activé`);
 
-  return { message: "Compte activé avec succès" };
+  return { message: "Compte activé avec succès. Vous pouvez maintenant vous connecter." };
 }
 
-// ============================================
-// RENVOI DE CODE D'ACTIVATION
-// ============================================
+async function renvoyerCodeActivation(data) {
+  const identifiant = data.identifiant || data.courriel || data.email || data.telephone;
 
-async function renvoyerCodeActivation({ courriel, telephone }) {
-  let utilisateur = null;
-  if (courriel) utilisateur = await authRepository.findUtilisateurByEmail(courriel);
-  else if (telephone) utilisateur = await authRepository.findUtilisateurByTelephone(telephone);
-
-  if (!utilisateur) {
-    return {
-      message: "Si un compte correspondant existe, un nouveau code sera envoyé.",
-    };
+  if (!identifiant) {
+    throw new AppError("Identifiant obligatoire", 400, "CHAMPS_MANQUANTS");
   }
 
-  if (utilisateur.statut_compte === "ACTIF") {
-    throw new AppError("Ce compte est déjà activé", 400, "DEJA_ACTIF");
+  const u = await repo.findUtilisateurByIdentifiant(identifiant.trim());
+
+  if (!u) {
+    // Réponse générique
+    return { message: "Si un compte correspondant existe, un nouveau code sera envoyé." };
   }
 
-  const code = genererCodeActivation();
-  const codeHash = hashCode(code);
-  const dateExpiration = calculerExpiration();
+  if (u.statut_compte === "ACTIF") {
+    throw new AppError("Ce compte est déjà activé. Connectez-vous.", 400, "DEJA_ACTIF");
+  }
 
-  await authRepository.remplacerActivation(utilisateur.id, codeHash, dateExpiration);
+  const codeActivation = genererCodeActivation();
+  const codeHash = hasherCode(codeActivation);
+  const dateExpiration = new Date(Date.now() + 15 * 60 * 1000);
 
-  await envoyerCodeMultiCanal({
-    utilisateurId: utilisateur.id,
-    prenom: utilisateur.prenom,
-    email: utilisateur.email,
-    telephone: utilisateur.telephone,
-    code,
-    type: "ACTIVATION",
-  });
+  await repo.remplacerActivation(u.id, codeHash, dateExpiration);
 
-  logger.info(`Nouveau code d'activation pour #${utilisateur.id}`);
+  if (u.email) {
+    emailService
+      .envoyerCodeActivationDonneur({
+        destinataire: u.email,
+        prenom: u.prenom,
+        code: codeActivation,
+        telephone: u.telephone,
+        utilisateurId: u.id,
+      })
+      .catch(() => {});
+  }
 
   return {
-    message: "Un nouveau code d'activation a été envoyé.",
+    message: "Un nouveau code d'activation a été généré.",
+    codeActivation, // TEMPORAIRE
     dateExpiration,
   };
 }
@@ -404,318 +278,194 @@ async function renvoyerCodeActivation({ courriel, telephone }) {
 // MOT DE PASSE OUBLIÉ
 // ============================================
 
-async function demanderReinitialisation({ courriel, telephone }) {
-  let utilisateur = null;
-  if (courriel) utilisateur = await authRepository.findUtilisateurByEmail(courriel);
-  else if (telephone) utilisateur = await authRepository.findUtilisateurByTelephone(telephone);
+async function demanderReinitialisation(data) {
+  const identifiant = data.identifiant || data.email || data.telephone;
+  if (!identifiant) {
+    throw new AppError("Identifiant obligatoire", 400, "CHAMPS_MANQUANTS");
+  }
 
-  if (!utilisateur || utilisateur.statut_compte !== "ACTIF") {
-    return {
-      message:
-        "Si un compte actif correspond à ce contact, un code de réinitialisation a été envoyé.",
-    };
+  const u = await repo.findUtilisateurByIdentifiant(identifiant.trim());
+  if (!u) {
+    return { message: "Si un compte existe, un code vous sera envoyé." };
   }
 
   const code = genererCodeActivation();
-  const codeHash = hashCode(code);
-  const dateExpiration = calculerExpiration();
+  const codeHash = hasherCode(code);
+  const dateExpiration = new Date(Date.now() + 15 * 60 * 1000);
 
-  await authRepository.remplacerActivation(utilisateur.id, codeHash, dateExpiration);
+  await repo.remplacerActivation(u.id, codeHash, dateExpiration);
 
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateur.id,
-    action: "DEMANDE_REINITIALISATION_MDP",
-  });
-
-  await envoyerCodeMultiCanal({
-    utilisateurId: utilisateur.id,
-    prenom: utilisateur.prenom,
-    email: utilisateur.email,
-    telephone: utilisateur.telephone,
-    code,
-    type: "REINITIALISATION",
-  });
-
-  logger.info(`Code de réinitialisation pour #${utilisateur.id}`);
+  if (u.email) {
+    emailService
+      .envoyerCodeReinitialisation({
+        destinataire: u.email,
+        prenom: u.prenom,
+        code,
+        utilisateurId: u.id,
+      })
+      .catch(() => {});
+  }
 
   return {
-    message:
-      "Si un compte actif correspond à ce contact, un code de réinitialisation a été envoyé.",
+    message: "Code de réinitialisation envoyé.",
+    code, // TEMPORAIRE
+    dateExpiration,
   };
 }
 
-// ============================================
-// RÉINITIALISATION DU MOT DE PASSE
-// ============================================
+async function reinitialiserMotDePasse(data, ip = null) {
+  const identifiant = data.identifiant || data.email || data.telephone;
+  const { code, nouveauMotDePasse } = data;
 
-async function reinitialiserMotDePasse(
-  { courriel, telephone, code, nouveauMotDePasse },
-  adresseIp = null
-) {
-  let utilisateur = null;
-  if (courriel) utilisateur = await authRepository.findUtilisateurByEmail(courriel);
-  else if (telephone) utilisateur = await authRepository.findUtilisateurByTelephone(telephone);
+  if (!identifiant || !code || !nouveauMotDePasse) {
+    throw new AppError("Champs obligatoires manquants", 400, "CHAMPS_MANQUANTS");
+  }
 
-  if (!utilisateur || utilisateur.statut_compte !== "ACTIF") {
+  if (nouveauMotDePasse.length < 8) {
+    throw new AppError("Le mot de passe doit contenir au moins 8 caractères", 400, "MDP_TROP_COURT");
+  }
+
+  const u = await repo.findUtilisateurByIdentifiant(identifiant.trim());
+  if (!u) {
     throw new AppError("Code invalide ou expiré", 400, "CODE_INVALIDE");
   }
 
-  const codeHash = hashCode(code);
-  const activation = await authRepository.findActivationValide(utilisateur.id, codeHash);
+  const codeHash = hasherCode(code.trim().toUpperCase());
+  const activation = await repo.findActivationValide(u.id, codeHash);
 
   if (!activation) {
     throw new AppError("Code invalide ou expiré", 400, "CODE_INVALIDE");
   }
 
-  const motDePasseHash = await bcrypt.hash(nouveauMotDePasse, BCRYPT_ROUNDS);
+  const hash = await bcrypt.hash(nouveauMotDePasse, 12);
+  await repo.changerMotDePasseTransactionnel(u.id, hash, activation.id);
 
-  await authRepository.changerMotDePasseTransactionnel(
-    utilisateur.id,
-    motDePasseHash,
-    activation.id
-  );
-
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateur.id,
-    action: "REINITIALISATION_MDP",
-    adresse_ip: adresseIp,
-  });
-
-  await notificationService.notifier(utilisateur.id, {
-    titre: "Mot de passe réinitialisé",
-    message:
-      "Votre mot de passe a été réinitialisé. Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
-    type: "ALERTE",
-  });
-
-  return { message: "Mot de passe réinitialisé avec succès." };
+  return { message: "Mot de passe réinitialisé. Connectez-vous." };
 }
 
-// ============================================
-// MODIFICATION DU MOT DE PASSE (connecté)
-// ============================================
+async function modifierMotDePasse(userId, data, ip = null) {
+  const { ancienMotDePasse, nouveauMotDePasse } = data;
 
-async function modifierMotDePasse(
-  utilisateurId,
-  { ancienMotDePasse, nouveauMotDePasse },
-  adresseIp = null
-) {
-  const utilisateur = await authRepository.findUtilisateurById(utilisateurId);
-  if (!utilisateur || !utilisateur.mot_de_passe) {
-    throw new AppError("Utilisateur introuvable", 404, "NOT_FOUND");
+  if (!ancienMotDePasse || !nouveauMotDePasse) {
+    throw new AppError("Champs obligatoires manquants", 400, "CHAMPS_MANQUANTS");
+  }
+  if (nouveauMotDePasse.length < 8) {
+    throw new AppError("Le nouveau mot de passe doit contenir au moins 8 caractères", 400, "MDP_TROP_COURT");
   }
 
-  const valide = await bcrypt.compare(ancienMotDePasse, utilisateur.mot_de_passe);
-  if (!valide) {
-    throw new AppError("Ancien mot de passe incorrect", 401, "AUTH_FAILED");
+  const u = await repo.findUtilisateurById(userId);
+  if (!u || !(await bcrypt.compare(ancienMotDePasse, u.mot_de_passe))) {
+    throw new AppError("Ancien mot de passe incorrect", 401, "MDP_INCORRECT");
   }
 
-  const motDePasseHash = await bcrypt.hash(nouveauMotDePasse, BCRYPT_ROUNDS);
-  await authRepository.updateMotDePasse(utilisateurId, motDePasseHash);
-
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateurId,
-    action: "MODIFIER_MOT_DE_PASSE",
-    adresse_ip: adresseIp,
-  });
-
-  await notificationService.notifier(utilisateurId, {
-    titre: "Mot de passe modifié",
-    message:
-      "Votre mot de passe a bien été modifié. Si vous n'êtes pas à l'origine de cette action, contactez immédiatement l'administrateur.",
-    type: "ALERTE",
-  });
+  const hash = await bcrypt.hash(nouveauMotDePasse, 12);
+  await repo.updateMotDePasse(userId, hash);
 
   return { message: "Mot de passe modifié avec succès." };
 }
 
 // ============================================
-// INVITATION PAR LA BANQUE (registre)
+// INVITATIONS
 // ============================================
 
-async function inviterDonneursParBanque(data, utilisateurAdmin = null) {
-  const {
-    etablissementId,
-    prenom,
-    nom,
-    telephone,
-    email,
-    groupeSanguin,
-    rhesus,
-    source = "MANUEL",
-  } = data;
+async function inviterDonneursParBanque(data, user) {
+  const { prenom, nom, email, telephone, groupeSanguin, rhesus, etablissementId } = data;
 
-  if (!etablissementId) {
-    throw new AppError(
-      "L'établissement est obligatoire",
-      400,
-      "ETABLISSEMENT_REQUIS"
-    );
-  }
-  if (!email && !telephone) {
-    throw new AppError(
-      "Au moins un email ou un téléphone est requis pour envoyer l'invitation",
-      400,
-      "CONTACT_REQUIS"
-    );
+  if (!prenom || !nom || (!email && !telephone)) {
+    throw new AppError("Champs obligatoires manquants", 400, "CHAMPS_MANQUANTS");
   }
 
   const codeActivation = genererCodeActivation();
-  const dateExpiration = calculerExpirationJours(DUREE_CODE_INVITATION_JOURS);
+  const dateExpiration = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  const resultat = await authRepository.creerInvitation({
-    etablissementId,
-    prenom,
-    nom,
-    telephone: telephone || null,
-    email: email || null,
+  const etabIdFinal =
+    etablissementId ||
+    user?.etablissement_id ||
+    user?.etablissementIdentifiant;
+
+  if (!etabIdFinal) {
+    throw new AppError("Établissement introuvable", 400, "ETABLISSEMENT_MANQUANT");
+  }
+
+  const { invitationId } = await repo.creerInvitation({
+    etablissementId: etabIdFinal,
+    prenom: prenom.trim(),
+    nom: nom.trim(),
+    email: email ? email.trim().toLowerCase() : null,
+    telephone: telephone ? telephone.trim() : null,
     groupeSanguin: groupeSanguin || null,
     rhesus: rhesus || null,
     codeActivation,
-    source,
+    source: "MANUEL",
     dateExpiration,
   });
 
-  await journalAudit.enregistrer({
-    utilisateur_id: utilisateurAdmin?.id || null,
-    action: "INVITER_DONNEUR",
-    nouvelle_valeur: {
-      invitation_id: resultat.invitationId,
-      etablissement_id: etablissementId,
-      email: email || null,
-      telephone: telephone || null,
-    },
-  });
-
-  const envois = [];
+  // Récupérer le nom de l'établissement (adapter si méthode différente)
+  const etab = await repo.findUtilisateurById(etabIdFinal);
+  const nomEtablissement = etab?.nom || "Aidora";
 
   if (email) {
-    envois.push(
-      emailService.envoyerInvitationRegistre({
-        destinataire: email,
-        prenom,
-        nomEtablissement: data.nomEtablissement || "la banque de sang",
+    emailService
+      .envoyerInvitationRegistre({
+        destinataire: email.trim().toLowerCase(),
+        prenom: prenom.trim(),
+        nomEtablissement,
         code: codeActivation,
-        utilisateurId: utilisateurAdmin?.id || null,
-      }).catch((e) => ({ succes: false, erreur: e.message }))
-    );
+        telephone: telephone || null,
+        utilisateurId: user?.id || null,
+      })
+      .catch(() => {});
   }
-
-  if (telephone) {
-    envois.push(
-      smsService.envoyerInvitation(
-        telephone,
-        prenom,
-        data.nomEtablissement || "la banque de sang",
-        codeActivation,
-        utilisateurAdmin?.id || null
-      ).catch((e) => ({ succes: false, erreur: e.message }))
-    );
-  }
-
-  await Promise.all(envois);
-
-  logger.info(`Invitation créée pour ${prenom} ${nom} (étab #${etablissementId})`);
 
   return {
-    invitationId: resultat.invitationId,
+    message: "Invitation envoyée.",
+    invitationId,
+    codeActivation, // TEMPORAIRE
     dateExpiration,
-    message: "Invitation envoyée avec succès.",
   };
 }
 
-// ============================================
-// ACCEPTER UNE INVITATION
-// ============================================
+async function accepterInvitation(data, ip = null) {
+  const { code, prenom, nom, motDePasse, email, telephone } = data;
 
-async function accepterInvitation({ code, motDePasse }, adresseIp = null) {
-  const invitation = await authRepository.trouverInvitationParCode(code);
+  if (!code || !prenom || !nom || !motDePasse) {
+    throw new AppError("Champs obligatoires manquants", 400, "CHAMPS_MANQUANTS");
+  }
+
+  const invitation = await repo.trouverInvitationParCode(code.trim().toUpperCase());
   if (!invitation) {
-    throw new AppError("Code d'invitation invalide ou expiré", 400, "CODE_INVALIDE");
+    throw new AppError("Code d'invitation invalide ou expiré", 400, "INVITATION_INVALIDE");
   }
 
-  const existant = await authRepository.findUtilisateurParEmailOuTelephone(
-    invitation.email,
-    invitation.telephone
-  );
-
-  if (existant) {
-    await authRepository.updateStatutInvitation(invitation.id, "ACCEPTEE");
-    await authRepository.creerRattachementInitial(
-      existant.id,
-      invitation.etablissement_id,
-      "INVITATION"
-    );
-    await journalAudit.enregistrer({
-      utilisateur_id: existant.id,
-      action: "ACCEPTER_INVITATION",
-      nouvelle_valeur: {
-        invitation_id: invitation.id,
-        etablissement_id: invitation.etablissement_id,
-      },
-      adresse_ip: adresseIp,
-    });
-    return {
-      utilisateurId: existant.id,
-      message: "Invitation acceptée. Vous êtes rattaché à l'établissement.",
-    };
-  }
-
-  const motDePasseHash = await bcrypt.hash(motDePasse, BCRYPT_ROUNDS);
+  const motDePasseHash = await bcrypt.hash(motDePasse, 12);
   const codeActivation = genererCodeActivation();
-  const codeHash = hashCode(codeActivation);
+  const codeHash = hasherCode(codeActivation);
 
-  const resultat = await authRepository.creerDonneurInscription({
-    nom: invitation.nom,
-    prenom: invitation.prenom,
-    email: invitation.email,
-    telephone: invitation.telephone,
+  const result = await repo.creerDonneurInscription({
+    nom: nom.trim(),
+    prenom: prenom.trim(),
+    email: (email || invitation.email || "").trim().toLowerCase() || null,
+    telephone: (telephone || invitation.telephone || "").trim(),
     motDePasseHash,
-    groupeSanguin: invitation.groupe_sanguin || "O",
-    rhesus: invitation.rhesus || "POSITIF",
-    dateNaissance: null,
-    sexe: null,
-    latitude: null,
-    longitude: null,
-    ville: null,
-    quartier: null,
-    codeActivation,
+    groupeSanguin: invitation.groupe_sanguin,
+    rhesus: invitation.rhesus,
     codeHash,
+    codeActivation,
   });
 
-  await authRepository.creerRattachementInitial(
-    resultat.utilisateurId,
+  // Rattachement à l'établissement inviteur
+  await repo.creerRattachementInitial(
+    result.utilisateurId,
     invitation.etablissement_id,
     "INVITATION"
   );
-  await authRepository.updateStatutInvitation(invitation.id, "ACCEPTEE");
 
-  await journalAudit.enregistrer({
-    utilisateur_id: resultat.utilisateurId,
-    action: "ACCEPTER_INVITATION",
-    nouvelle_valeur: {
-      invitation_id: invitation.id,
-      etablissement_id: invitation.etablissement_id,
-    },
-    adresse_ip: adresseIp,
-  });
-
-  try {
-    await envoyerCodeMultiCanal({
-      utilisateurId: resultat.utilisateurId,
-      prenom: invitation.prenom,
-      email: invitation.email,
-      telephone: invitation.telephone,
-      code: codeActivation,
-      type: "ACTIVATION",
-    });
-  } catch (err) {
-    logger.error(`[Auth] Envoi code après invitation : ${err.message}`);
-  }
+  await repo.updateStatutInvitation(invitation.id, "ACCEPTEE");
 
   return {
-    utilisateurId: resultat.utilisateurId,
-    message: "Inscription réussie. Un code d'activation vous a été envoyé pour activer votre compte.",
+    message: "Invitation acceptée. Un code d'activation vous a été envoyé.",
+    utilisateurId: result.utilisateurId,
+    codeActivation,
   };
 }
 
@@ -734,7 +484,4 @@ module.exports = {
   modifierMotDePasse,
   inviterDonneursParBanque,
   accepterInvitation,
-  genererCodeActivation,
-  hashCode,
-  calculerExpiration,
 };

@@ -6,9 +6,6 @@ const service = require("./auth.service");
 const asyncHandler = require("../../utils/asyncHandler");
 const { success } = require("../../utils/response");
 
-/**
- * Extrait l'IP réelle (derrière proxy éventuel).
- */
 function getIp(req) {
   return (
     req.ip ||
@@ -18,9 +15,6 @@ function getIp(req) {
   );
 }
 
-/**
- * Récupère l'utilisateur connecté depuis req.user (défini par le middleware).
- */
 function getUser(req) {
   return req.user || null;
 }
@@ -30,8 +24,9 @@ function getUser(req) {
 // ============================================
 
 const login = asyncHandler(async (req, res) => {
-  const { identifiant, motDePasse } = req.body;
-  const result = await service.login(identifiant, motDePasse, getIp(req));
+  const { identifiant, courriel, email, telephone, motDePasse } = req.body;
+  const id = identifiant || courriel || email || telephone;
+  const result = await service.login(id, motDePasse, getIp(req));
   return success(res, result, "Connexion réussie");
 });
 
@@ -45,11 +40,6 @@ const logout = asyncHandler(async (req, res) => {
 // INSCRIPTION PUBLIQUE D'UN DONNEUR
 // ============================================
 
-/**
- * @desc    Inscription publique d'un nouveau donneur
- * @route   POST /api/auth/inscription-donneur
- * @access  Public
- */
 const inscrireDonneur = asyncHandler(async (req, res) => {
   const result = await service.inscrireDonneur(req.body, getIp(req));
   return success(res, result, result.message, 201);
@@ -57,25 +47,50 @@ const inscrireDonneur = asyncHandler(async (req, res) => {
 
 // ============================================
 // ACTIVATION DE COMPTE
+// ------------------------------------------------------------
+// ✅ Accepte identifiant OU courriel/email OU telephone
 // ============================================
 
-/**
- * @desc    Activer un compte avec un code
- * @route   POST /api/auth/activation
- * @access  Public
- */
 const activerCompte = asyncHandler(async (req, res) => {
-  const result = await service.activerCompte(req.body, getIp(req));
+  const {
+    identifiant,
+    courriel,
+    email,
+    telephone,
+    codeActivation,
+    code,
+  } = req.body;
+
+  // Priorité : identifiant > courriel/email > telephone
+  const idFinal = identifiant || courriel || email || telephone;
+
+  const result = await service.activerCompte(
+    {
+      identifiant: idFinal,
+      courriel: courriel || email,
+      telephone,
+      codeActivation: codeActivation || code,
+    },
+    getIp(req)
+  );
   return success(res, result);
 });
 
-/**
- * @desc    Renvoyer un code d'activation
- * @route   POST /api/auth/renvoyer-activation
- * @access  Public
- */
+// ============================================
+// RENVOYER UN CODE D'ACTIVATION
+// ✅ Accepte identifiant OU courriel/email OU telephone
+// ============================================
+
 const renvoyerCode = asyncHandler(async (req, res) => {
-  const result = await service.renvoyerCodeActivation(req.body);
+  const { identifiant, courriel, email, telephone } = req.body;
+
+  const idFinal = identifiant || courriel || email || telephone;
+
+  const result = await service.renvoyerCodeActivation({
+    identifiant: idFinal,
+    courriel: courriel || email,
+    telephone,
+  });
   return success(res, result);
 });
 
@@ -83,31 +98,44 @@ const renvoyerCode = asyncHandler(async (req, res) => {
 // MOT DE PASSE OUBLIÉ
 // ============================================
 
-/**
- * @desc    Demander une réinitialisation de mot de passe
- * @route   POST /api/auth/mot-de-passe-oublie
- * @access  Public
- */
 const demanderReinitialisation = asyncHandler(async (req, res) => {
-  const result = await service.demanderReinitialisation(req.body);
+  const { identifiant, courriel, email, telephone } = req.body;
+  const idFinal = identifiant || courriel || email || telephone;
+
+  const result = await service.demanderReinitialisation({
+    identifiant: idFinal,
+    courriel: courriel || email,
+    telephone,
+  });
   return success(res, result);
 });
 
-/**
- * @desc    Réinitialiser le mot de passe avec un code
- * @route   POST /api/auth/reinitialiser-mot-de-passe
- * @access  Public
- */
 const reinitialiserMotDePasse = asyncHandler(async (req, res) => {
-  const result = await service.reinitialiserMotDePasse(req.body, getIp(req));
+  const {
+    identifiant,
+    courriel,
+    email,
+    telephone,
+    code,
+    codeActivation,
+    nouveauMotDePasse,
+  } = req.body;
+
+  const idFinal = identifiant || courriel || email || telephone;
+
+  const result = await service.reinitialiserMotDePasse(
+    {
+      identifiant: idFinal,
+      courriel: courriel || email,
+      telephone,
+      code: code || codeActivation,
+      nouveauMotDePasse,
+    },
+    getIp(req)
+  );
   return success(res, result);
 });
 
-/**
- * @desc    Modifier son mot de passe (connecté)
- * @route   PUT /api/auth/mot-de-passe
- * @access  Privé
- */
 const modifierMotDePasse = asyncHandler(async (req, res) => {
   const user = getUser(req);
   const result = await service.modifierMotDePasse(
@@ -119,26 +147,15 @@ const modifierMotDePasse = asyncHandler(async (req, res) => {
 });
 
 // ============================================
-// INVITATIONS (registre papier)
+// INVITATIONS
 // ============================================
 
-/**
- * @desc    Inviter un donneur du registre à rejoindre Aidora
- * @route   POST /api/auth/inviter-donneur
- * @access  Personnel banque / Admin
- */
 const inviterDonneur = asyncHandler(async (req, res) => {
   const user = getUser(req);
-  // Récupérer le nom de l'établissement pour l'email/SMS
   const result = await service.inviterDonneursParBanque(req.body, user);
   return success(res, result, "Invitation envoyée avec succès", 201);
 });
 
-/**
- * @desc    Accepter une invitation reçue d'une banque
- * @route   POST /api/auth/accepter-invitation
- * @access  Public
- */
 const accepterInvitation = asyncHandler(async (req, res) => {
   const result = await service.accepterInvitation(req.body, getIp(req));
   return success(res, result, result.message, 201);
@@ -149,18 +166,14 @@ const accepterInvitation = asyncHandler(async (req, res) => {
 // ============================================
 
 module.exports = {
-  // Connexion
   login,
   logout,
-  // Inscription
   inscrireDonneur,
   activerCompte,
   renvoyerCode,
-  // Mot de passe
   demanderReinitialisation,
   reinitialiserMotDePasse,
   modifierMotDePasse,
-  // Invitations
   inviterDonneur,
   accepterInvitation,
 };

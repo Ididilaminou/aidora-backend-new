@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const journalAudit = require("../journal-audit/journalAudit.service");
 const notificationService = require("../notifications/notifications.service");
 const smsService = require("../../services/smsService");
-const emailService = require("../../services/emailService");
+const emailService = require("../../services/email.service");
 
 const ROLES_PERSONNEL = [
   "PERSONNEL_BANQUE",
